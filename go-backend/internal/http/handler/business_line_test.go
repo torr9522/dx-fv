@@ -1,9 +1,13 @@
 package handler
 
 import (
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
+
+	"go-backend/internal/store/model"
 )
 
 func TestIsAddressAlreadyInUse(t *testing.T) {
@@ -63,5 +67,27 @@ func TestBusinessLineValidationMessages(t *testing.T) {
 				t.Fatalf("error = %v, want %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestBusinessLineResponseSerializesNullableIDsAsNumbers(t *testing.T) {
+	row := &model.BusinessLine{
+		ID: 1, Name: "test", PathType: "frontsea",
+		IXPort:   sql.NullInt64{Int64: 34705, Valid: true},
+		TunnelID: sql.NullInt64{},
+	}
+	payload, err := json.Marshal(newBusinessLineResponse(row))
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+	text := string(payload)
+	if !strings.Contains(text, `"ixPort":34705`) {
+		t.Fatalf("expected numeric ixPort, got %s", text)
+	}
+	if !strings.Contains(text, `"tunnelId":null`) {
+		t.Fatalf("expected null tunnelId, got %s", text)
+	}
+	if strings.Contains(text, "Int64") || strings.Contains(text, "Valid") {
+		t.Fatalf("response leaked sql.NullInt64 shape: %s", text)
 	}
 }

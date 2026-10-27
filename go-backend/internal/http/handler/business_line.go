@@ -42,6 +42,27 @@ type businessLineCreateRequest struct {
 	QIXTunnelID int64  `json:"qixTunnelId"`
 }
 
+type businessLineResponse struct {
+	ID          int64  `json:"id"`
+	UserID      int64  `json:"userId"`
+	Name        string `json:"name"`
+	PathType    string `json:"pathType"`
+	GZNodeID    int64  `json:"gzNodeId"`
+	GZForwardID int64  `json:"gzForwardId"`
+	GZTunnelID  int64  `json:"gzTunnelId"`
+	IXNodeID    *int64 `json:"ixNodeId"`
+	IXForwardID *int64 `json:"ixForwardId"`
+	IXTunnelID  *int64 `json:"ixTunnelId"`
+	IXPort      *int64 `json:"ixPort"`
+	TunnelID    *int64 `json:"tunnelId"`
+	EntryPort   int    `json:"entryPort"`
+	TargetHost  string `json:"targetHost"`
+	TargetPort  int    `json:"targetPort"`
+	Status      string `json:"status"`
+	CreatedTime int64  `json:"createdTime"`
+	UpdatedTime int64  `json:"updatedTime"`
+}
+
 type frontseaPortConflictError struct {
 	port int
 	err  error
@@ -73,7 +94,11 @@ func (h *Handler) businessLineList(w http.ResponseWriter, r *http.Request) {
 		response.WriteJSON(w, response.Err(-2, err.Error()))
 		return
 	}
-	response.WriteJSON(w, response.OK(rows))
+	items := make([]businessLineResponse, 0, len(rows))
+	for i := range rows {
+		items = append(items, newBusinessLineResponse(&rows[i]))
+	}
+	response.WriteJSON(w, response.OK(items))
 }
 
 func (h *Handler) businessLineCreate(w http.ResponseWriter, r *http.Request) {
@@ -96,7 +121,7 @@ func (h *Handler) businessLineCreate(w http.ResponseWriter, r *http.Request) {
 		response.WriteJSON(w, response.ErrDefault(err.Error()))
 		return
 	}
-	response.WriteJSON(w, response.OK(row))
+	response.WriteJSON(w, response.OK(newBusinessLineResponse(row)))
 }
 
 func (h *Handler) businessLineDelete(w http.ResponseWriter, r *http.Request) {
@@ -351,6 +376,29 @@ func configuredBusinessLineResource(name string) (int64, error) {
 		return 0, fmt.Errorf("invalid %s", name)
 	}
 	return id, nil
+}
+
+func newBusinessLineResponse(row *model.BusinessLine) businessLineResponse {
+	if row == nil {
+		return businessLineResponse{}
+	}
+	return businessLineResponse{
+		ID: row.ID, UserID: row.UserID, Name: row.Name, PathType: row.PathType,
+		GZNodeID: row.GZNodeID, GZForwardID: row.GZForwardID, GZTunnelID: row.GZTunnelID,
+		IXNodeID: nullableInt64Pointer(row.IXNodeID), IXForwardID: nullableInt64Pointer(row.IXForwardID),
+		IXTunnelID: nullableInt64Pointer(row.IXTunnelID), IXPort: nullableInt64Pointer(row.IXPort),
+		TunnelID: nullableInt64Pointer(row.TunnelID), EntryPort: row.EntryPort,
+		TargetHost: row.TargetHost, TargetPort: row.TargetPort, Status: row.Status,
+		CreatedTime: row.CreatedTime, UpdatedTime: row.UpdatedTime,
+	}
+}
+
+func nullableInt64Pointer(value sql.NullInt64) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	result := value.Int64
+	return &result
 }
 
 func (h *Handler) syncForwardByID(id int64) error {
