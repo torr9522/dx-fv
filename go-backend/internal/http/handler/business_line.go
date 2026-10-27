@@ -199,14 +199,14 @@ func (h *Handler) createFrontseaLineTx(tx *gorm.DB, req businessLineCreateReques
 		return nil, errors.New("前海IX节点地址为空")
 	}
 
-	gzTunnelID, err := h.repo.CreateTunnelTx(tx, req.Name+" / GZ入口", 1, 1, 1, now, 1, nil, h.repo.NextIndex("tunnel"), "", "", 0)
+	gzTunnelID, err := h.repo.CreateTunnelTx(tx, req.Name+" / GZ入口", 1, 1, 1, now, 1, nil, h.repo.NextIndexTx(tx, "tunnel"), "", "", 0)
 	if err != nil {
 		return nil, err
 	}
 	if err := h.repo.CreateChainTunnelTx(tx, gzTunnelID, "1", req.GZNodeID, sql.NullInt64{}, "round", 1, "tcp", ""); err != nil {
 		return nil, err
 	}
-	ixTunnelID, err := h.repo.CreateTunnelTx(tx, req.Name+" / 前海IX出口", 1, 1, 1, now, 1, nil, h.repo.NextIndex("tunnel"), "", "", 0)
+	ixTunnelID, err := h.repo.CreateTunnelTx(tx, req.Name+" / 前海IX出口", 1, 1, 1, now, 1, nil, h.repo.NextIndexTx(tx, "tunnel"), "", "", 0)
 	if err != nil {
 		return nil, err
 	}

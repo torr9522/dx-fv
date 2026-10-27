@@ -232,6 +232,20 @@ func (r *Repository) NextIndex(table string) int {
 	if r == nil || r.db == nil {
 		return 0
 	}
+	return nextIndex(r.db, table)
+}
+
+// NextIndexTx computes the next ordering index on the caller's transaction.
+// SQLite uses a single connection in production, so querying r.db while a
+// transaction is open would wait forever for that same connection.
+func (r *Repository) NextIndexTx(tx *gorm.DB, table string) int {
+	if tx == nil {
+		return 0
+	}
+	return nextIndex(tx, table)
+}
+
+func nextIndex(db *gorm.DB, table string) int {
 	var modelRef interface{}
 	switch table {
 	case "node":
@@ -248,7 +262,7 @@ func (r *Repository) NextIndex(table string) int {
 		Inx int
 	}
 	var row inxRow
-	err := r.db.Model(modelRef).
+	err := db.Model(modelRef).
 		Select("inx").
 		Order("inx ASC, id ASC").
 		Limit(1).
