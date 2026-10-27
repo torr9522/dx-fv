@@ -16,7 +16,10 @@ import (
 	"gorm.io/gorm"
 )
 
-var businessLinePortMu sync.Mutex
+var (
+	businessLinePortMu               sync.Mutex
+	businessLineRuntimePortConflicts = make(map[int64]map[int]bool)
+)
 
 const (
 	frontseaPortStart = 34700
@@ -172,7 +175,11 @@ func (h *Handler) createBusinessLine(req businessLineCreateRequest, userID int64
 		userName = "user"
 	}
 	if req.PathType == "frontsea" {
-		runtimeConflicts := make(map[int]bool)
+		runtimeConflicts := businessLineRuntimePortConflicts[req.IXNodeID]
+		if runtimeConflicts == nil {
+			runtimeConflicts = make(map[int]bool)
+			businessLineRuntimePortConflicts[req.IXNodeID] = runtimeConflicts
+		}
 		for {
 			tx := h.repo.BeginTx()
 			if tx == nil || tx.Error != nil {
