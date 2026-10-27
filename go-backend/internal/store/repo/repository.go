@@ -292,6 +292,7 @@ func autoMigrateAll(db *gorm.DB) error {
 		&model.UserQuota{},
 		&model.Forward{},
 		&model.ForwardPort{},
+		&model.BusinessLine{},
 		&model.Node{},
 		&model.NodeSSHConfig{},
 		&model.NftRuleBinding{},

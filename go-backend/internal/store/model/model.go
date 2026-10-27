@@ -66,6 +66,32 @@ type ForwardPort struct {
 
 func (ForwardPort) TableName() string { return "forward_port" }
 
+// BusinessLine groups the underlying forwards that implement one user-facing
+// route.  Keeping the relation by IDs makes deletion and reconciliation safe
+// even when display names or ports are later changed.
+type BusinessLine struct {
+	ID          int64         `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID      int64         `gorm:"column:user_id;not null;uniqueIndex:idx_business_line_entry,priority:1" json:"userId"`
+	Name        string        `gorm:"type:varchar(150);not null" json:"name"`
+	PathType    string        `gorm:"column:path_type;type:varchar(20);not null" json:"pathType"`
+	GZNodeID    int64         `gorm:"column:gz_node_id;not null;uniqueIndex:idx_business_line_entry,priority:2" json:"gzNodeId"`
+	GZForwardID int64         `gorm:"column:gz_forward_id;not null" json:"gzForwardId"`
+	GZTunnelID  int64         `gorm:"column:gz_tunnel_id;not null" json:"gzTunnelId"`
+	IXNodeID    sql.NullInt64 `gorm:"column:ix_node_id;uniqueIndex:idx_business_line_ix_port,priority:2" json:"ixNodeId"`
+	IXForwardID sql.NullInt64 `gorm:"column:ix_forward_id" json:"ixForwardId"`
+	IXTunnelID  sql.NullInt64 `gorm:"column:ix_tunnel_id" json:"ixTunnelId"`
+	IXPort      sql.NullInt64 `gorm:"column:ix_port;uniqueIndex:idx_business_line_ix_port,priority:3" json:"ixPort"`
+	TunnelID    sql.NullInt64 `gorm:"column:tunnel_id" json:"tunnelId"`
+	EntryPort   int           `gorm:"column:entry_port;not null;uniqueIndex:idx_business_line_entry,priority:3" json:"entryPort"`
+	TargetHost  string        `gorm:"column:target_host;type:varchar(255);not null" json:"targetHost"`
+	TargetPort  int           `gorm:"column:target_port;not null" json:"targetPort"`
+	Status      string        `gorm:"type:varchar(20);not null;default:'active'" json:"status"`
+	CreatedTime int64         `gorm:"column:created_time;not null" json:"createdTime"`
+	UpdatedTime int64         `gorm:"column:updated_time;not null" json:"updatedTime"`
+}
+
+func (BusinessLine) TableName() string { return "business_line" }
+
 type Node struct {
 	ID                      int64          `gorm:"primaryKey;autoIncrement"`
 	Name                    string         `gorm:"type:varchar(100);not null"`
