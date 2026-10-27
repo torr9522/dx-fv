@@ -292,7 +292,6 @@ func autoMigrateAll(db *gorm.DB) error {
 		&model.UserQuota{},
 		&model.Forward{},
 		&model.ForwardPort{},
-		&model.BusinessLine{},
 		&model.Node{},
 		&model.NodeSSHConfig{},
 		&model.NftRuleBinding{},
@@ -3017,25 +3016,38 @@ func (r *Repository) GetUserTunnelByID(id int64) (*model.UserTunnel, error) {
 
 // ─── Migration ───────────────────────────────────────────────────────
 
-const currentSchemaVersion = 6
+const currentSchemaVersion = 7
 
 var ensurePostgresIDDefaultsFn = ensurePostgresIDDefaults
 var migrateViteConfigValueColumnTypeFn = migrateViteConfigValueColumnType
 var migrateSpeedLimitTunnelBindingFn = migrateSpeedLimitTunnelBinding
 var migratePostgresTrafficInt64ColumnsFn = migratePostgresTrafficInt64Columns
 var migrateTunnelMetricBucketUniqueIndexFn = migrateTunnelMetricBucketUniqueIndex
+var migrateBusinessLineSchemaFn = migrateBusinessLineSchema
 
-func getSchemaVersion(db *gorm.DB) int {
+func getSchemaVersion(db *gorm.DB) (int, error) {
 	var v model.SchemaVersion
 	if err := db.First(&v).Error; err != nil {
-		db.Create(&model.SchemaVersion{Version: 0})
-		return 0
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, fmt.Errorf("read schema version: %w", err)
+		}
+		if err := db.Create(&model.SchemaVersion{Version: 0}).Error; err != nil {
+			return 0, fmt.Errorf("initialize schema version: %w", err)
+		}
+		return 0, nil
 	}
-	return v.Version
+	return v.Version, nil
 }
 
-func setSchemaVersion(db *gorm.DB, ver int) {
-	db.Model(&model.SchemaVersion{}).Where("1=1").Update("version", ver)
+func setSchemaVersion(db *gorm.DB, ver int) error {
+	result := db.Model(&model.SchemaVersion{}).Where("1=1").Update("version", ver)
+	if result.Error != nil {
+		return fmt.Errorf("set schema version %d: %w", ver, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("set schema version %d: schema_version row missing", ver)
+	}
+	return nil
 }
 
 func migrateSchema(db *gorm.DB) error {
@@ -3047,7 +3059,11 @@ func migrateSchema(db *gorm.DB) error {
 		return err
 	}
 
-	ver := getSchemaVersion(db)
+	ver, err := getSchemaVersion(db)
+	if err != nil {
+		return err
+	}
+	log.Printf("database schema migration: current=%d target=%d", ver, currentSchemaVersion)
 	if ver >= currentSchemaVersion {
 		return nil
 	}
@@ -3099,7 +3115,32 @@ func migrateSchema(db *gorm.DB) error {
 		}
 	}
 
-	setSchemaVersion(db, currentSchemaVersion)
+	if ver < 7 {
+		if err := db.Transaction(func(tx *gorm.DB) error {
+			if err := migrateBusinessLineSchemaFn(tx); err != nil {
+				return err
+			}
+			return setSchemaVersion(tx, 7)
+		}); err != nil {
+			return fmt.Errorf("apply migration 0007_add_business_line: %w", err)
+		}
+		log.Printf("database schema migration applied: 0007_add_business_line")
+		return nil
+	}
+
+	if err := setSchemaVersion(db, currentSchemaVersion); err != nil {
+		return err
+	}
+	return nil
+}
+
+func migrateBusinessLineSchema(db *gorm.DB) error {
+	if db == nil {
+		return errors.New("nil db")
+	}
+	if err := db.AutoMigrate(&model.BusinessLine{}); err != nil {
+		return fmt.Errorf("create business_line schema: %w", err)
+	}
 	return nil
 }
 

@@ -254,6 +254,99 @@ func TestMigrateSchemaReturnsPostgresIDRepairError(t *testing.T) {
 	}
 }
 
+func TestMigrateSchemaAddsVersionedBusinessLineSchema(t *testing.T) {
+	db, err := gorm.Open(gsqlite.Open(":memory:"), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() {
+		sqlDB, _ := db.DB()
+		if sqlDB != nil {
+			_ = sqlDB.Close()
+		}
+	})
+
+	if err := db.AutoMigrate(&model.SchemaVersion{}); err != nil {
+		t.Fatalf("create schema version: %v", err)
+	}
+	if err := db.Create(&model.SchemaVersion{Version: 6}).Error; err != nil {
+		t.Fatalf("seed schema version: %v", err)
+	}
+
+	if err := migrateSchema(db); err != nil {
+		t.Fatalf("migrateSchema: %v", err)
+	}
+	if !db.Migrator().HasTable(&model.BusinessLine{}) {
+		t.Fatal("expected business_line table")
+	}
+	for _, index := range []string{"idx_business_line_entry", "idx_business_line_ix_port"} {
+		if !db.Migrator().HasIndex(&model.BusinessLine{}, index) {
+			t.Fatalf("expected business_line index %s", index)
+		}
+	}
+
+	var version int
+	if err := db.Raw(`SELECT version FROM schema_version LIMIT 1`).Row().Scan(&version); err != nil {
+		t.Fatalf("read schema version: %v", err)
+	}
+	if version != 7 {
+		t.Fatalf("expected schema version 7, got %d", version)
+	}
+
+	if err := migrateSchema(db); err != nil {
+		t.Fatalf("repeat migrateSchema: %v", err)
+	}
+}
+
+func TestMigrateSchemaRollsBackFailedBusinessLineMigration(t *testing.T) {
+	db, err := gorm.Open(gsqlite.Open(":memory:"), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() {
+		sqlDB, _ := db.DB()
+		if sqlDB != nil {
+			_ = sqlDB.Close()
+		}
+	})
+
+	if err := db.AutoMigrate(&model.SchemaVersion{}); err != nil {
+		t.Fatalf("create schema version: %v", err)
+	}
+	if err := db.Create(&model.SchemaVersion{Version: 6}).Error; err != nil {
+		t.Fatalf("seed schema version: %v", err)
+	}
+
+	wantErr := errors.New("injected migration failure")
+	original := migrateBusinessLineSchemaFn
+	migrateBusinessLineSchemaFn = func(tx *gorm.DB) error {
+		if err := tx.Exec(`CREATE TABLE migration_partial (id INTEGER PRIMARY KEY)`).Error; err != nil {
+			return err
+		}
+		return wantErr
+	}
+	t.Cleanup(func() { migrateBusinessLineSchemaFn = original })
+
+	err = migrateSchema(db)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected %v, got %v", wantErr, err)
+	}
+	if db.Migrator().HasTable("migration_partial") {
+		t.Fatal("failed migration left partial schema")
+	}
+	var version int
+	if err := db.Raw(`SELECT version FROM schema_version LIMIT 1`).Row().Scan(&version); err != nil {
+		t.Fatalf("read schema version: %v", err)
+	}
+	if version != 6 {
+		t.Fatalf("expected schema version 6 after rollback, got %d", version)
+	}
+}
+
 func TestMigrateSchemaRunsViteConfigValueMigrationForLegacySchema(t *testing.T) {
 	db, err := gorm.Open(gsqlite.Open(":memory:"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
