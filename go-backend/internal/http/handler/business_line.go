@@ -34,6 +34,19 @@ type businessLineCreateRequest struct {
 	QIXTunnelID int64  `json:"qixTunnelId"`
 }
 
+type frontseaPortConflictError struct {
+	port int
+	err  error
+}
+
+func (e *frontseaPortConflictError) Error() string {
+	return e.err.Error()
+}
+
+func (e *frontseaPortConflictError) Unwrap() error {
+	return e.err
+}
+
 func (h *Handler) businessLineList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		response.WriteJSON(w, response.ErrDefault("请求失败"))
@@ -158,19 +171,34 @@ func (h *Handler) createBusinessLine(req businessLineCreateRequest, userID int64
 	if userName == "" {
 		userName = "user"
 	}
+	if req.PathType == "frontsea" {
+		runtimeConflicts := make(map[int]bool)
+		for {
+			tx := h.repo.BeginTx()
+			if tx == nil || tx.Error != nil {
+				return nil, errors.New("无法打开数据库事务")
+			}
+			row, err := h.createFrontseaLineTx(tx, req, userID, userName, now, runtimeConflicts)
+			_ = tx.Rollback().Error
+			if err == nil {
+				return row, nil
+			}
+			var conflict *frontseaPortConflictError
+			if !errors.As(err, &conflict) {
+				return nil, err
+			}
+			runtimeConflicts[conflict.port] = true
+		}
+	}
 	tx := h.repo.BeginTx()
 	if tx == nil || tx.Error != nil {
 		return nil, errors.New("无法打开数据库事务")
 	}
 	defer tx.Rollback()
-
-	if req.PathType == "frontsea" {
-		return h.createFrontseaLineTx(tx, req, userID, userName, now)
-	}
 	return h.createQIXLineTx(tx, req, userID, userName, now)
 }
 
-func (h *Handler) createFrontseaLineTx(tx *gorm.DB, req businessLineCreateRequest, userID int64, userName string, now int64) (*model.BusinessLine, error) {
+func (h *Handler) createFrontseaLineTx(tx *gorm.DB, req businessLineCreateRequest, userID int64, userName string, now int64, runtimeConflicts map[int]bool) (*model.BusinessLine, error) {
 	ix, err := h.repo.GetNodeRecordTx(tx, req.IXNodeID)
 	if err != nil || ix == nil {
 		return nil, errors.New("前海IX节点不存在")
@@ -190,6 +218,9 @@ func (h *Handler) createFrontseaLineTx(tx *gorm.DB, req businessLineCreateReques
 		return nil, err
 	}
 	reserved := map[int]bool{34700: true, 34701: true, 34720: true, 34721: true, 34722: true, 34723: true, 34724: true, 34725: true}
+	for port := range runtimeConflicts {
+		reserved[port] = true
+	}
 	ixPort, err := repo.PickPortFromPool(used, reserved, frontseaPortStart, frontseaPortEnd)
 	if err != nil {
 		return nil, err
@@ -235,9 +266,16 @@ func (h *Handler) createFrontseaLineTx(tx *gorm.DB, req businessLineCreateReques
 	}
 	if err := h.syncForwardByID(ixForward.ID); err != nil {
 		_ = h.cleanupBusinessLineRows(row)
+		if isAddressAlreadyInUse(err) {
+			return nil, &frontseaPortConflictError{port: ixPort, err: err}
+		}
 		return nil, err
 	}
 	return row, nil
+}
+
+func isAddressAlreadyInUse(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "address already in use")
 }
 
 func (h *Handler) createQIXLineTx(tx *gorm.DB, req businessLineCreateRequest, userID int64, userName string, now int64) (*model.BusinessLine, error) {
