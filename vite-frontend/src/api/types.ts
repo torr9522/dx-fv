@@ -431,6 +431,25 @@ export interface ForwardMutationPayload {
   proxyProtocolSend?: number;
 }
 
+export interface BusinessLineApiItem {
+  id: number;
+  name: string;
+  pathType: "frontsea" | "qix";
+  gzNodeId: number;
+  gzForwardId: number;
+  gzTunnelId?: number;
+  ixNodeId?: number | null;
+  ixForwardId?: number | null;
+  ixTunnelId?: number | null;
+  ixPort?: number | null;
+  tunnelId?: number | null;
+  entryPort: number;
+  targetHost: string;
+  targetPort: number;
+  status: string;
+  createdTime: number;
+}
+
 export interface SpeedLimitMutationPayload {
   id?: number;
   name?: string;

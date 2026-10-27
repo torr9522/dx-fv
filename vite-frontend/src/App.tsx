@@ -21,6 +21,7 @@ import ProfilePage from "@/pages/profile";
 import LimitPage from "@/pages/limit";
 import ConfigPage from "@/pages/config";
 import PanelSharingPage from "@/pages/panel-sharing";
+import BusinessLinePage from "@/pages/business-line";
 import AdminLayout from "@/layouts/admin";
 import H5Layout from "@/layouts/h5";
 import H5SimpleLayout from "@/layouts/h5-simple";
@@ -208,6 +209,14 @@ function App() {
             </ProtectedRoute>
           }
           path="/forward"
+        />
+        <Route
+          element={
+            <ProtectedRoute>
+              <BusinessLinePage />
+            </ProtectedRoute>
+          }
+          path="/business-line"
         />
         <Route
           element={

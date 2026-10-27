@@ -45,6 +45,7 @@ import type {
   SystemUpgradeCheckApiData,
   SystemUpgradeRunApiData,
   SystemUpgradeVersionApiData,
+  BusinessLineApiItem,
 } from "./types";
 
 import axios from "axios";
@@ -249,6 +250,24 @@ export const deleteForward = (id: number) =>
   Network.post("/forward/delete", { id });
 export const forceDeleteForward = (id: number) =>
   Network.post("/forward/force-delete", { id });
+
+export interface BusinessLineCreatePayload {
+  name: string;
+  pathType: "frontsea" | "qix";
+  gzNodeId: number;
+  ixNodeId?: number;
+  entryPort: number;
+  targetHost: string;
+  targetPort: number;
+  qixTunnelId?: number;
+}
+
+export const getBusinessLineList = () =>
+  Network.post<BusinessLineApiItem[]>("/business-line/list");
+export const createBusinessLine = (data: BusinessLineCreatePayload) =>
+  Network.post<BusinessLineApiItem>("/business-line/create", data);
+export const deleteBusinessLine = (id: number) =>
+  Network.post("/business-line/delete", { id });
 
 // 转发服务控制操作 - 通过Java后端接口
 export const pauseForwardService = (forwardId: number) =>

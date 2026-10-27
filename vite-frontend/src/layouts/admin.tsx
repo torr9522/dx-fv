@@ -86,6 +86,18 @@ export default function AdminLayout({
       ),
     },
     {
+      path: "/business-line",
+      label: "业务线路",
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path d="M4 7h16M4 17h16M8 4v6m8 4v6" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+          <circle cx="8" cy="7" r="2" strokeWidth={2} />
+          <circle cx="16" cy="17" r="2" strokeWidth={2} />
+        </svg>
+      ),
+      adminOnly: true,
+    },
+    {
       path: "/tunnel",
       label: "隧道",
       icon: (
