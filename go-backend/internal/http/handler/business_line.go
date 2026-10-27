@@ -286,11 +286,11 @@ func isAddressAlreadyInUse(err error) bool {
 }
 
 func (h *Handler) createQIXLineTx(tx *gorm.DB, req businessLineCreateRequest, userID int64, userName string, now int64) (*model.BusinessLine, error) {
-	tun, err := h.repo.GetTunnelRecord(req.QIXTunnelID)
+	tun, err := h.repo.GetTunnelRecordTx(tx, req.QIXTunnelID)
 	if err != nil || tun == nil {
 		return nil, errors.New("QIX Tunnel不存在")
 	}
-	entry, err := h.repo.TunnelEntryNodeIDs(req.QIXTunnelID)
+	entry, err := h.repo.TunnelEntryNodeIDsTx(tx, req.QIXTunnelID)
 	if err != nil || len(entry) == 0 || entry[0] != req.GZNodeID {
 		return nil, errors.New("QIX Tunnel入口不是指定GZ节点")
 	}

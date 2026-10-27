@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"database/sql"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -52,5 +53,45 @@ func TestNextIndexTxUsesOpenTransaction(t *testing.T) {
 	}
 	if got := r.NextIndexTx(tx, "tunnel"); got != -1 {
 		t.Fatalf("NextIndexTx() = %d, want -1", got)
+	}
+}
+
+func TestBusinessLineTunnelReadsUseOpenTransaction(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("database handle: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	if err := db.AutoMigrate(&model.Tunnel{}, &model.ChainTunnel{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	tunnel := model.Tunnel{Name: "qix", Type: 2, Flow: 1, TrafficRatio: 1, Status: 1}
+	if err := db.Create(&tunnel).Error; err != nil {
+		t.Fatalf("create tunnel: %v", err)
+	}
+	if err := db.Create(&model.ChainTunnel{
+		TunnelID: tunnel.ID, ChainType: "1", NodeID: 7,
+		Inx: sql.NullInt64{Int64: 1, Valid: true},
+	}).Error; err != nil {
+		t.Fatalf("create chain: %v", err)
+	}
+
+	r := &Repository{db: db}
+	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatalf("begin transaction: %v", tx.Error)
+	}
+	defer tx.Rollback()
+	if got, err := r.GetTunnelRecordTx(tx, tunnel.ID); err != nil || got == nil || got.ID != tunnel.ID {
+		t.Fatalf("GetTunnelRecordTx() = %#v, %v", got, err)
+	}
+	ids, err := r.TunnelEntryNodeIDsTx(tx, tunnel.ID)
+	if err != nil || len(ids) != 1 || ids[0] != 7 {
+		t.Fatalf("TunnelEntryNodeIDsTx() = %v, %v", ids, err)
 	}
 }

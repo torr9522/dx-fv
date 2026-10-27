@@ -263,8 +263,19 @@ func (r *Repository) GetTunnelRecord(tunnelID int64) (*model.TunnelRecord, error
 	if r == nil || r.db == nil {
 		return nil, errors.New("repository not initialized")
 	}
+	return getTunnelRecord(r.db, tunnelID)
+}
+
+func (r *Repository) GetTunnelRecordTx(tx *gorm.DB, tunnelID int64) (*model.TunnelRecord, error) {
+	if tx == nil {
+		return nil, errors.New("database unavailable")
+	}
+	return getTunnelRecord(tx, tunnelID)
+}
+
+func getTunnelRecord(db *gorm.DB, tunnelID int64) (*model.TunnelRecord, error) {
 	var t model.Tunnel
-	err := r.db.Where("id = ?", tunnelID).First(&t).Error
+	err := db.Where("id = ?", tunnelID).First(&t).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil

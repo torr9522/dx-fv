@@ -646,8 +646,19 @@ func (r *Repository) TunnelEntryNodeIDs(tunnelID int64) ([]int64, error) {
 	if r == nil || r.db == nil {
 		return nil, errors.New("repository not initialized")
 	}
+	return tunnelEntryNodeIDs(r.db, tunnelID)
+}
+
+func (r *Repository) TunnelEntryNodeIDsTx(tx *gorm.DB, tunnelID int64) ([]int64, error) {
+	if tx == nil {
+		return nil, errors.New("database unavailable")
+	}
+	return tunnelEntryNodeIDs(tx, tunnelID)
+}
+
+func tunnelEntryNodeIDs(db *gorm.DB, tunnelID int64) ([]int64, error) {
 	var ids []int64
-	err := r.db.Model(&model.ChainTunnel{}).
+	err := db.Model(&model.ChainTunnel{}).
 		Where("tunnel_id = ? AND chain_type = ?", tunnelID, "1").
 		Order("inx ASC, id ASC").
 		Pluck("node_id", &ids).Error
