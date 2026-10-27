@@ -3,8 +3,10 @@ package handler
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,8 +24,11 @@ var (
 )
 
 const (
-	frontseaPortStart = 34700
-	frontseaPortEnd   = 34799
+	frontseaPortStart           = 34700
+	frontseaPortEnd             = 34799
+	businessLineGZNodeEnv       = "FLVX_BUSINESS_LINE_GZ_NODE_ID"
+	businessLineFrontseaNodeEnv = "FLVX_BUSINESS_LINE_FRONTSEA_NODE_ID"
+	businessLineQIXTunnelEnv    = "FLVX_BUSINESS_LINE_QIX_TUNNEL_ID"
 )
 
 type businessLineCreateRequest struct {
@@ -154,17 +159,36 @@ func (h *Handler) createBusinessLine(req businessLineCreateRequest, userID int64
 	if req.PathType != "frontsea" && req.PathType != "qix" {
 		return nil, errors.New("路径必须是前海IX或QIX")
 	}
-	if req.GZNodeID <= 0 || req.EntryPort < 1 || req.EntryPort > 65535 || req.TargetPort < 1 || req.TargetPort > 65535 || req.TargetHost == "" {
-		return nil, errors.New("入口和目标参数无效")
+	var err error
+	if req.GZNodeID <= 0 {
+		req.GZNodeID, err = configuredBusinessLineResource(businessLineGZNodeEnv)
+		if err != nil {
+			return nil, errors.New("GZ入口节点尚未配置，请联系管理员")
+		}
+	}
+	if req.EntryPort < 1 || req.EntryPort > 65535 {
+		return nil, errors.New("GZ入口端口必须是 1-65535")
+	}
+	if req.TargetHost == "" {
+		return nil, errors.New("落地 IP / Host 不能为空")
+	}
+	if req.TargetPort < 1 || req.TargetPort > 65535 {
+		return nil, errors.New("落地端口必须是 1-65535")
 	}
 	if net.ParseIP(req.TargetHost) == nil && strings.ContainsAny(req.TargetHost, "/?# ") {
-		return nil, errors.New("目标Host格式无效")
+		return nil, errors.New("落地 IP / Host 格式无效")
 	}
 	if req.PathType == "frontsea" && req.IXNodeID <= 0 {
-		return nil, errors.New("前海IX节点不能为空")
+		req.IXNodeID, err = configuredBusinessLineResource(businessLineFrontseaNodeEnv)
+		if err != nil {
+			return nil, errors.New("前海IX节点尚未配置，请联系管理员")
+		}
 	}
 	if req.PathType == "qix" && req.QIXTunnelID <= 0 {
-		return nil, errors.New("QIX必须选择既有Tunnel")
+		req.QIXTunnelID, err = configuredBusinessLineResource(businessLineQIXTunnelEnv)
+		if err != nil {
+			return nil, errors.New("QIX测试隧道当前不可用，请联系管理员")
+		}
 	}
 
 	businessLinePortMu.Lock()
@@ -207,18 +231,19 @@ func (h *Handler) createBusinessLine(req businessLineCreateRequest, userID int64
 
 func (h *Handler) createFrontseaLineTx(tx *gorm.DB, req businessLineCreateRequest, userID int64, userName string, now int64, runtimeConflicts map[int]bool) (*model.BusinessLine, error) {
 	ix, err := h.repo.GetNodeRecordTx(tx, req.IXNodeID)
-	if err != nil || ix == nil {
-		return nil, errors.New("前海IX节点不存在")
+	if err != nil || ix == nil || ix.Status != 1 {
+		return nil, errors.New("前海IX节点当前不可用")
 	}
-	if _, err := h.repo.GetNodeRecordTx(tx, req.GZNodeID); err != nil {
-		return nil, errors.New("GZ节点不存在")
+	gz, err := h.repo.GetNodeRecordTx(tx, req.GZNodeID)
+	if err != nil || gz == nil || gz.Status != 1 {
+		return nil, errors.New("GZ入口节点当前不可用")
 	}
 	gzUsed, err := h.repo.UsedPortsOnNodeTx(tx, req.GZNodeID)
 	if err != nil {
 		return nil, err
 	}
 	if gzUsed[req.EntryPort] {
-		return nil, errors.New("GZ入口端口已被占用")
+		return nil, fmt.Errorf("GZ入口端口 %d 已被占用", req.EntryPort)
 	}
 	used, err := h.repo.UsedPortsOnNodeTx(tx, req.IXNodeID)
 	if err != nil {
@@ -287,19 +312,19 @@ func isAddressAlreadyInUse(err error) bool {
 
 func (h *Handler) createQIXLineTx(tx *gorm.DB, req businessLineCreateRequest, userID int64, userName string, now int64) (*model.BusinessLine, error) {
 	tun, err := h.repo.GetTunnelRecordTx(tx, req.QIXTunnelID)
-	if err != nil || tun == nil {
-		return nil, errors.New("QIX Tunnel不存在")
+	if err != nil || tun == nil || tun.Status != 1 || tun.Type != 2 {
+		return nil, errors.New("QIX测试隧道当前不可用")
 	}
 	entry, err := h.repo.TunnelEntryNodeIDsTx(tx, req.QIXTunnelID)
 	if err != nil || len(entry) == 0 || entry[0] != req.GZNodeID {
-		return nil, errors.New("QIX Tunnel入口不是指定GZ节点")
+		return nil, errors.New("QIX测试隧道配置无效，请联系管理员")
 	}
 	used, err := h.repo.UsedPortsOnNodeTx(tx, req.GZNodeID)
 	if err != nil {
 		return nil, err
 	}
 	if used[req.EntryPort] {
-		return nil, errors.New("GZ入口端口已被占用")
+		return nil, fmt.Errorf("GZ入口端口 %d 已被占用", req.EntryPort)
 	}
 	f := &model.Forward{UserID: userID, UserName: userName, Name: req.Name, TunnelID: req.QIXTunnelID, RemoteAddr: net.JoinHostPort(req.TargetHost, strconv.Itoa(req.TargetPort)), Strategy: "fifo", CreatedTime: now, UpdatedTime: now, Status: 1}
 	if err := h.repo.CreateForwardOnTx(tx, f, req.GZNodeID, req.EntryPort, ""); err != nil {
@@ -317,6 +342,15 @@ func (h *Handler) createQIXLineTx(tx *gorm.DB, req businessLineCreateRequest, us
 		return nil, err
 	}
 	return row, nil
+}
+
+func configuredBusinessLineResource(name string) (int64, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, fmt.Errorf("invalid %s", name)
+	}
+	return id, nil
 }
 
 func (h *Handler) syncForwardByID(id int64) error {

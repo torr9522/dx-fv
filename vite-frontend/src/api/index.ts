@@ -254,7 +254,7 @@ export const forceDeleteForward = (id: number) =>
 export interface BusinessLineCreatePayload {
   name: string;
   pathType: "frontsea" | "qix";
-  gzNodeId: number;
+  gzNodeId?: number;
   ixNodeId?: number;
   entryPort: number;
   targetHost: string;
