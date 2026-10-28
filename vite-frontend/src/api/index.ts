@@ -260,12 +260,21 @@ export interface BusinessLineCreatePayload {
   targetHost: string;
   targetPort: number;
   qixTunnelId?: number;
+  protocolMode: "tcp_udp" | "tcp";
 }
 
 export const getBusinessLineList = () =>
   Network.post<BusinessLineApiItem[]>("/business-line/list");
 export const createBusinessLine = (data: BusinessLineCreatePayload) =>
   Network.post<BusinessLineApiItem>("/business-line/create", data);
+export const updateBusinessLineProtocol = (
+  id: number,
+  protocolMode: "tcp_udp" | "tcp",
+) =>
+  Network.post<BusinessLineApiItem>("/business-line/update-protocol", {
+    id,
+    protocolMode,
+  });
 export const deleteBusinessLine = (id: number) =>
   Network.post("/business-line/delete", { id });
 

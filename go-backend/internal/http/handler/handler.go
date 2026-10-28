@@ -39,11 +39,12 @@ type Handler struct {
 	healthCheck     *health.Checker
 	nftablesManager nftablesRuntimeManager
 
-	peerResourceMu sync.Mutex
-	captchaMu      sync.Mutex
-	captchaTokens  map[string]int64
-	passkeyMu      sync.Mutex
-	passkeyPending map[string]passkeyCeremony
+	peerResourceMu         sync.Mutex
+	businessLineProtocolMu sync.Mutex
+	captchaMu              sync.Mutex
+	captchaTokens          map[string]int64
+	passkeyMu              sync.Mutex
+	passkeyPending         map[string]passkeyCeremony
 
 	jobsMu              sync.Mutex
 	jobsCancel          context.CancelFunc
@@ -246,6 +247,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/forward/batch-change-tunnel", h.forwardBatchChangeTunnel)
 	mux.HandleFunc("/api/v1/business-line/list", h.businessLineList)
 	mux.HandleFunc("/api/v1/business-line/create", h.businessLineCreate)
+	mux.HandleFunc("/api/v1/business-line/update-protocol", h.businessLineUpdateProtocol)
 	mux.HandleFunc("/api/v1/business-line/delete", h.businessLineDelete)
 	mux.HandleFunc("/api/v1/speed-limit/list", h.speedLimitList)
 	mux.HandleFunc("/api/v1/speed-limit/create", h.speedLimitCreate)

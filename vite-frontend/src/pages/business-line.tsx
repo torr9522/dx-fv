@@ -7,10 +7,13 @@ import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { AnimatedPage } from "@/components/animated-page";
 import { Button } from "@/shadcn-bridge/heroui/button";
 import { Input } from "@/shadcn-bridge/heroui/input";
+import { Radio, RadioGroup } from "@/shadcn-bridge/heroui/radio";
+import { Switch } from "@/shadcn-bridge/heroui/switch";
 import {
   createBusinessLine,
   deleteBusinessLine,
   getBusinessLineList,
+  updateBusinessLineProtocol,
 } from "@/api";
 
 const initialForm = {
@@ -19,6 +22,7 @@ const initialForm = {
   entryPort: "",
   targetHost: "",
   targetPort: "",
+  protocolMode: "tcp_udp" as "tcp_udp" | "tcp",
 };
 
 const validPort = (value: string) => {
@@ -32,6 +36,9 @@ export default function BusinessLinePage() {
   const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [switchingProtocol, setSwitchingProtocol] = useState<number | null>(
+    null,
+  );
 
   const load = async () => {
     const response = await getBusinessLineList();
@@ -81,6 +88,7 @@ export default function BusinessLinePage() {
         entryPort: Number(form.entryPort),
         targetHost: form.targetHost.trim(),
         targetPort: Number(form.targetPort),
+        protocolMode: form.protocolMode,
       });
 
       if (response.code !== 0) {
@@ -93,6 +101,31 @@ export default function BusinessLinePage() {
       toast.error(error instanceof Error ? error.message : "线路创建失败");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const switchProtocol = async (line: BusinessLineApiItem) => {
+    const nextMode = line.protocolMode === "tcp_udp" ? "tcp" : "tcp_udp";
+    const message =
+      nextMode === "tcp"
+        ? "将协议从 TCP+UDP 切换为 TCP。\n\nUDP 将停止，现有 TCP 应保持运行。"
+        : "将协议从 TCP 切换为 TCP+UDP。\n\nUDP 将恢复。";
+
+    if (!window.confirm(message)) return;
+
+    setSwitchingProtocol(line.id);
+    try {
+      const response = await updateBusinessLineProtocol(line.id, nextMode);
+
+      if (response.code !== 0) {
+        throw new Error(response.msg || "协议切换失败");
+      }
+      toast.success(nextMode === "tcp" ? "已切换为 TCP" : "已切换为 TCP+UDP");
+      await load();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "协议切换失败");
+    } finally {
+      setSwitchingProtocol(null);
     }
   };
 
@@ -162,6 +195,15 @@ export default function BusinessLinePage() {
             value={form.targetPort}
             onChange={(event) => update("targetPort", event.target.value)}
           />
+          <RadioGroup
+            label="协议模式"
+            orientation="horizontal"
+            value={form.protocolMode}
+            onValueChange={(value) => update("protocolMode", value)}
+          >
+            <Radio value="tcp_udp">TCP+UDP</Radio>
+            <Radio value="tcp">TCP</Radio>
+          </RadioGroup>
         </div>
         <Button
           className="mt-5"
@@ -191,7 +233,12 @@ export default function BusinessLinePage() {
               {lines.map((line) => (
                 <Fragment key={line.id}>
                   <tr className="border-b border-default-100">
-                    <td className="p-2 font-medium">{line.name}</td>
+                    <td className="p-2 font-medium">
+                      <span>{line.name}</span>
+                      <span className="ml-2 inline-flex rounded bg-default-100 px-2 py-0.5 text-xs font-normal text-default-600">
+                        {line.protocolMode === "tcp" ? "TCP" : "TCP+UDP"}
+                      </span>
+                    </td>
                     <td className="p-2">{line.entryPort}</td>
                     <td className="p-2">
                       {line.pathType === "frontsea" ? "前海IX" : "QIX"}
@@ -235,20 +282,25 @@ export default function BusinessLinePage() {
                   {expanded === line.id && (
                     <tr className="border-b border-default-100 bg-default-50">
                       <td className="p-3 text-default-600" colSpan={6}>
-                        {line.pathType === "frontsea" ? (
+                        <div className="flex flex-wrap items-center justify-between gap-3">
                           <span>
-                            内部端口：{line.ixPort ?? "-"}；底层转发：GZ #
-                            {line.gzForwardId}
-                            {line.ixForwardId
-                              ? ` / 前海IX #${line.ixForwardId}`
-                              : ""}
+                            {line.pathType === "frontsea"
+                              ? `内部端口：${line.ixPort ?? "-"}；底层转发：GZ #${line.gzForwardId}${line.ixForwardId ? ` / 前海IX #${line.ixForwardId}` : ""}`
+                              : `共享 QIX 隧道 #${line.tunnelId ?? "-"}；底层转发：GZ #${line.gzForwardId}`}
                           </span>
-                        ) : (
-                          <span>
-                            共享 QIX 隧道 #{line.tunnelId ?? "-"}；底层转发：GZ
-                            #{line.gzForwardId}
-                          </span>
-                        )}
+                          <label className="flex items-center gap-3 text-sm text-foreground">
+                            <span>
+                              协议：
+                              {line.protocolMode === "tcp" ? "TCP" : "TCP+UDP"}
+                            </span>
+                            <Switch
+                              aria-label={`切换${line.name}的协议模式`}
+                              isDisabled={switchingProtocol === line.id}
+                              isSelected={line.protocolMode === "tcp_udp"}
+                              onValueChange={() => void switchProtocol(line)}
+                            />
+                          </label>
+                        </div>
                       </td>
                     </tr>
                   )}

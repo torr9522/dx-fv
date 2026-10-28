@@ -32,35 +32,42 @@ const (
 )
 
 type businessLineCreateRequest struct {
-	Name        string `json:"name"`
-	PathType    string `json:"pathType"`
-	GZNodeID    int64  `json:"gzNodeId"`
-	IXNodeID    int64  `json:"ixNodeId"`
-	EntryPort   int    `json:"entryPort"`
-	TargetHost  string `json:"targetHost"`
-	TargetPort  int    `json:"targetPort"`
-	QIXTunnelID int64  `json:"qixTunnelId"`
+	Name         string `json:"name"`
+	PathType     string `json:"pathType"`
+	GZNodeID     int64  `json:"gzNodeId"`
+	IXNodeID     int64  `json:"ixNodeId"`
+	EntryPort    int    `json:"entryPort"`
+	TargetHost   string `json:"targetHost"`
+	TargetPort   int    `json:"targetPort"`
+	QIXTunnelID  int64  `json:"qixTunnelId"`
+	ProtocolMode string `json:"protocolMode"`
+}
+
+type businessLineProtocolRequest struct {
+	ID           int64  `json:"id"`
+	ProtocolMode string `json:"protocolMode"`
 }
 
 type businessLineResponse struct {
-	ID          int64  `json:"id"`
-	UserID      int64  `json:"userId"`
-	Name        string `json:"name"`
-	PathType    string `json:"pathType"`
-	GZNodeID    int64  `json:"gzNodeId"`
-	GZForwardID int64  `json:"gzForwardId"`
-	GZTunnelID  int64  `json:"gzTunnelId"`
-	IXNodeID    *int64 `json:"ixNodeId"`
-	IXForwardID *int64 `json:"ixForwardId"`
-	IXTunnelID  *int64 `json:"ixTunnelId"`
-	IXPort      *int64 `json:"ixPort"`
-	TunnelID    *int64 `json:"tunnelId"`
-	EntryPort   int    `json:"entryPort"`
-	TargetHost  string `json:"targetHost"`
-	TargetPort  int    `json:"targetPort"`
-	Status      string `json:"status"`
-	CreatedTime int64  `json:"createdTime"`
-	UpdatedTime int64  `json:"updatedTime"`
+	ID           int64  `json:"id"`
+	UserID       int64  `json:"userId"`
+	Name         string `json:"name"`
+	PathType     string `json:"pathType"`
+	GZNodeID     int64  `json:"gzNodeId"`
+	GZForwardID  int64  `json:"gzForwardId"`
+	GZTunnelID   int64  `json:"gzTunnelId"`
+	IXNodeID     *int64 `json:"ixNodeId"`
+	IXForwardID  *int64 `json:"ixForwardId"`
+	IXTunnelID   *int64 `json:"ixTunnelId"`
+	IXPort       *int64 `json:"ixPort"`
+	TunnelID     *int64 `json:"tunnelId"`
+	EntryPort    int    `json:"entryPort"`
+	TargetHost   string `json:"targetHost"`
+	TargetPort   int    `json:"targetPort"`
+	ProtocolMode string `json:"protocolMode"`
+	Status       string `json:"status"`
+	CreatedTime  int64  `json:"createdTime"`
+	UpdatedTime  int64  `json:"updatedTime"`
 }
 
 type frontseaPortConflictError struct {
@@ -124,6 +131,51 @@ func (h *Handler) businessLineCreate(w http.ResponseWriter, r *http.Request) {
 	response.WriteJSON(w, response.OK(newBusinessLineResponse(row)))
 }
 
+func (h *Handler) businessLineUpdateProtocol(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.WriteJSON(w, response.ErrDefault("请求失败"))
+		return
+	}
+	var req businessLineProtocolRequest
+	if err := decodeJSON(r.Body, &req); err != nil || req.ID <= 0 {
+		response.WriteJSON(w, response.ErrDefault("线路ID不能为空"))
+		return
+	}
+	req.ProtocolMode = normalizeBusinessLineProtocolMode(req.ProtocolMode)
+	if !validBusinessLineProtocolMode(req.ProtocolMode) {
+		response.WriteJSON(w, response.ErrDefault("协议模式仅支持 TCP+UDP 或 TCP"))
+		return
+	}
+	actorID, roleID, err := userRoleFromRequest(r)
+	if err != nil {
+		response.WriteJSON(w, response.Err(401, "未登录"))
+		return
+	}
+
+	h.businessLineProtocolMu.Lock()
+	defer h.businessLineProtocolMu.Unlock()
+	row, err := h.repo.GetBusinessLine(req.ID)
+	if err != nil {
+		response.WriteJSON(w, response.ErrDefault("线路不存在"))
+		return
+	}
+	if roleID != 0 && row.UserID != actorID {
+		response.WriteJSON(w, response.Err(403, "无权操作该线路"))
+		return
+	}
+	if row.ProtocolMode == req.ProtocolMode {
+		response.WriteJSON(w, response.OK(newBusinessLineResponse(row)))
+		return
+	}
+	if err := h.updateBusinessLineProtocol(row, req.ProtocolMode); err != nil {
+		response.WriteJSON(w, response.ErrDefault(err.Error()))
+		return
+	}
+	row.ProtocolMode = req.ProtocolMode
+	row.UpdatedTime = time.Now().UnixMilli()
+	response.WriteJSON(w, response.OK(newBusinessLineResponse(row)))
+}
+
 func (h *Handler) businessLineDelete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		response.WriteJSON(w, response.ErrDefault("请求失败"))
@@ -178,11 +230,15 @@ func (h *Handler) createBusinessLine(req businessLineCreateRequest, userID int64
 	req.Name = strings.TrimSpace(req.Name)
 	req.PathType = strings.ToLower(strings.TrimSpace(req.PathType))
 	req.TargetHost = strings.TrimSpace(req.TargetHost)
+	req.ProtocolMode = normalizeBusinessLineProtocolMode(req.ProtocolMode)
 	if req.Name == "" || len(req.Name) > 150 {
 		return nil, errors.New("线路名称不能为空且不能超过150个字符")
 	}
 	if req.PathType != "frontsea" && req.PathType != "qix" {
 		return nil, errors.New("路径必须是前海IX或QIX")
+	}
+	if !validBusinessLineProtocolMode(req.ProtocolMode) {
+		return nil, errors.New("协议模式仅支持 TCP+UDP 或 TCP")
 	}
 	var err error
 	if req.GZNodeID <= 0 {
@@ -310,7 +366,7 @@ func (h *Handler) createFrontseaLineTx(tx *gorm.DB, req businessLineCreateReques
 	if err := h.repo.CreateForwardOnTx(tx, ixForward, req.IXNodeID, ixPort, ""); err != nil {
 		return nil, err
 	}
-	row := &model.BusinessLine{UserID: userID, Name: req.Name, PathType: "frontsea", GZNodeID: req.GZNodeID, GZForwardID: gzForward.ID, GZTunnelID: gzTunnelID, IXNodeID: sql.NullInt64{Int64: req.IXNodeID, Valid: true}, IXForwardID: sql.NullInt64{Int64: ixForward.ID, Valid: true}, IXTunnelID: sql.NullInt64{Int64: ixTunnelID, Valid: true}, IXPort: sql.NullInt64{Int64: int64(ixPort), Valid: true}, EntryPort: req.EntryPort, TargetHost: req.TargetHost, TargetPort: req.TargetPort, Status: "active", CreatedTime: now, UpdatedTime: now}
+	row := &model.BusinessLine{UserID: userID, Name: req.Name, PathType: "frontsea", GZNodeID: req.GZNodeID, GZForwardID: gzForward.ID, GZTunnelID: gzTunnelID, IXNodeID: sql.NullInt64{Int64: req.IXNodeID, Valid: true}, IXForwardID: sql.NullInt64{Int64: ixForward.ID, Valid: true}, IXTunnelID: sql.NullInt64{Int64: ixTunnelID, Valid: true}, IXPort: sql.NullInt64{Int64: int64(ixPort), Valid: true}, EntryPort: req.EntryPort, TargetHost: req.TargetHost, TargetPort: req.TargetPort, ProtocolMode: req.ProtocolMode, Status: "active", CreatedTime: now, UpdatedTime: now}
 	if err := h.repo.CreateBusinessLineTx(tx, row); err != nil {
 		return nil, err
 	}
@@ -355,7 +411,7 @@ func (h *Handler) createQIXLineTx(tx *gorm.DB, req businessLineCreateRequest, us
 	if err := h.repo.CreateForwardOnTx(tx, f, req.GZNodeID, req.EntryPort, ""); err != nil {
 		return nil, err
 	}
-	row := &model.BusinessLine{UserID: userID, Name: req.Name, PathType: "qix", GZNodeID: req.GZNodeID, GZForwardID: f.ID, TunnelID: sql.NullInt64{Int64: req.QIXTunnelID, Valid: true}, EntryPort: req.EntryPort, TargetHost: req.TargetHost, TargetPort: req.TargetPort, Status: "active", CreatedTime: now, UpdatedTime: now}
+	row := &model.BusinessLine{UserID: userID, Name: req.Name, PathType: "qix", GZNodeID: req.GZNodeID, GZForwardID: f.ID, TunnelID: sql.NullInt64{Int64: req.QIXTunnelID, Valid: true}, EntryPort: req.EntryPort, TargetHost: req.TargetHost, TargetPort: req.TargetPort, ProtocolMode: req.ProtocolMode, Status: "active", CreatedTime: now, UpdatedTime: now}
 	if err := h.repo.CreateBusinessLineTx(tx, row); err != nil {
 		return nil, err
 	}
@@ -388,9 +444,117 @@ func newBusinessLineResponse(row *model.BusinessLine) businessLineResponse {
 		IXNodeID: nullableInt64Pointer(row.IXNodeID), IXForwardID: nullableInt64Pointer(row.IXForwardID),
 		IXTunnelID: nullableInt64Pointer(row.IXTunnelID), IXPort: nullableInt64Pointer(row.IXPort),
 		TunnelID: nullableInt64Pointer(row.TunnelID), EntryPort: row.EntryPort,
-		TargetHost: row.TargetHost, TargetPort: row.TargetPort, Status: row.Status,
+		TargetHost: row.TargetHost, TargetPort: row.TargetPort, ProtocolMode: row.ProtocolMode, Status: row.Status,
 		CreatedTime: row.CreatedTime, UpdatedTime: row.UpdatedTime,
 	}
+}
+
+func normalizeBusinessLineProtocolMode(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return model.BusinessLineProtocolTCPUDP
+	}
+	return value
+}
+
+func validBusinessLineProtocolMode(value string) bool {
+	return value == model.BusinessLineProtocolTCPUDP || value == model.BusinessLineProtocolTCP
+}
+
+func (h *Handler) updateBusinessLineProtocol(row *model.BusinessLine, nextMode string) error {
+	if row == nil || !validBusinessLineProtocolMode(row.ProtocolMode) || !validBusinessLineProtocolMode(nextMode) {
+		return errors.New("线路协议状态无效")
+	}
+	forwardIDs := []int64{row.GZForwardID}
+	if row.PathType == "frontsea" && row.IXForwardID.Valid {
+		forwardIDs = append(forwardIDs, row.IXForwardID.Int64)
+	}
+	forwards := make([]*forwardRecord, 0, len(forwardIDs))
+	for _, forwardID := range forwardIDs {
+		forward, err := h.getForwardRecord(forwardID)
+		if err != nil {
+			return fmt.Errorf("读取底层转发 #%d 失败: %w", forwardID, err)
+		}
+		forwards = append(forwards, forward)
+	}
+
+	if err := runForwardProtocolTransitions(forwards, row.ProtocolMode, nextMode, h.transitionForwardProtocol); err != nil {
+		return err
+	}
+
+	now := time.Now().UnixMilli()
+	if err := h.repo.UpdateBusinessLineProtocolMode(row.ID, row.ProtocolMode, nextMode, now); err != nil {
+		rollbackErr := h.rollbackForwardProtocolTransitions(forwards, row.ProtocolMode)
+		if rollbackErr != nil {
+			return fmt.Errorf("保存协议模式失败: %v; runtime 回滚失败: %w", err, rollbackErr)
+		}
+		return fmt.Errorf("保存协议模式失败: %w", err)
+	}
+	return nil
+}
+
+func runForwardProtocolTransitions(forwards []*forwardRecord, previousMode, nextMode string, transition func(*forwardRecord, string) error) error {
+	completed := make([]*forwardRecord, 0, len(forwards))
+	for _, forward := range forwards {
+		if err := transition(forward, nextMode); err != nil {
+			var rollbackErr error
+			for i := len(completed) - 1; i >= 0; i-- {
+				rollbackErr = errors.Join(rollbackErr, transition(completed[i], previousMode))
+			}
+			if rollbackErr != nil {
+				return fmt.Errorf("协议切换失败: %v; 回滚失败: %w", err, rollbackErr)
+			}
+			return fmt.Errorf("协议切换失败: %w", err)
+		}
+		completed = append(completed, forward)
+	}
+	return nil
+}
+
+func (h *Handler) rollbackForwardProtocolTransitions(completed []*forwardRecord, mode string) error {
+	var rollbackErr error
+	for i := len(completed) - 1; i >= 0; i-- {
+		if err := h.transitionForwardProtocol(completed[i], mode); err != nil {
+			rollbackErr = errors.Join(rollbackErr, err)
+		}
+	}
+	return rollbackErr
+}
+
+func (h *Handler) transitionForwardProtocol(forward *forwardRecord, nextMode string) error {
+	switch nextMode {
+	case model.BusinessLineProtocolTCP:
+		return h.deleteForwardProtocolServices(forward, "udp")
+	case model.BusinessLineProtocolTCPUDP:
+		_, err := h.syncForwardServicesForProtocolsWithWarnings(forward, "UpdateService", false, []string{"udp"})
+		return err
+	default:
+		return errors.New("unsupported business line protocol mode")
+	}
+}
+
+func (h *Handler) deleteForwardProtocolServices(forward *forwardRecord, protocol string) error {
+	if h == nil || forward == nil || protocol != "udp" {
+		return errors.New("invalid forward protocol cleanup context")
+	}
+	bases, err := h.forwardServiceBaseCandidates(forward)
+	if err != nil {
+		return err
+	}
+	ports, err := h.listForwardPorts(forward.ID)
+	if err != nil {
+		return err
+	}
+	names := make([]string, 0, len(bases))
+	for _, base := range bases {
+		names = append(names, base+"_"+protocol)
+	}
+	for _, nodeID := range forwardPortNodeIDs(ports) {
+		if _, err := h.sendNodeCommand(nodeID, "DeleteService", map[string]interface{}{"services": names}, false, true); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func nullableInt64Pointer(value sql.NullInt64) *int64 {

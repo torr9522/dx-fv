@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -72,7 +74,7 @@ func TestBusinessLineValidationMessages(t *testing.T) {
 
 func TestBusinessLineResponseSerializesNullableIDsAsNumbers(t *testing.T) {
 	row := &model.BusinessLine{
-		ID: 1, Name: "test", PathType: "frontsea",
+		ID: 1, Name: "test", PathType: "frontsea", ProtocolMode: model.BusinessLineProtocolTCP,
 		IXPort:   sql.NullInt64{Int64: 34705, Valid: true},
 		TunnelID: sql.NullInt64{},
 	}
@@ -89,5 +91,43 @@ func TestBusinessLineResponseSerializesNullableIDsAsNumbers(t *testing.T) {
 	}
 	if strings.Contains(text, "Int64") || strings.Contains(text, "Valid") {
 		t.Fatalf("response leaked sql.NullInt64 shape: %s", text)
+	}
+	if !strings.Contains(text, `"protocolMode":"tcp"`) {
+		t.Fatalf("expected protocol mode, got %s", text)
+	}
+}
+
+func TestBusinessLineProtocolModeValidation(t *testing.T) {
+	if got := normalizeBusinessLineProtocolMode(""); got != model.BusinessLineProtocolTCPUDP {
+		t.Fatalf("empty mode default = %q", got)
+	}
+	for _, mode := range []string{model.BusinessLineProtocolTCPUDP, model.BusinessLineProtocolTCP} {
+		if !validBusinessLineProtocolMode(mode) {
+			t.Fatalf("expected %q to be valid", mode)
+		}
+	}
+	for _, mode := range []string{"udp", "tcp+udp", "both"} {
+		if validBusinessLineProtocolMode(mode) {
+			t.Fatalf("expected %q to be invalid", mode)
+		}
+	}
+}
+
+func TestRunForwardProtocolTransitionsRollsBackCompletedHopsInReverse(t *testing.T) {
+	forwards := []*forwardRecord{{ID: 1}, {ID: 2}}
+	calls := make([]string, 0)
+	err := runForwardProtocolTransitions(forwards, model.BusinessLineProtocolTCPUDP, model.BusinessLineProtocolTCP, func(forward *forwardRecord, mode string) error {
+		calls = append(calls, fmt.Sprintf("%d:%s", forward.ID, mode))
+		if forward.ID == 2 && mode == model.BusinessLineProtocolTCP {
+			return errors.New("injected second-hop failure")
+		}
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected transition failure")
+	}
+	want := []string{"1:tcp", "2:tcp", "1:tcp_udp"}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %v, want %v", calls, want)
 	}
 }

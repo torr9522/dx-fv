@@ -446,6 +446,7 @@ export interface BusinessLineApiItem {
   entryPort: number;
   targetHost: string;
   targetPort: number;
+  protocolMode: "tcp_udp" | "tcp";
   status: string;
   createdTime: number;
 }

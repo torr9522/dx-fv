@@ -234,8 +234,33 @@ func (h *Handler) syncForwardServices(forward *forwardRecord, method string, all
 }
 
 func (h *Handler) syncForwardServicesWithWarnings(forward *forwardRecord, method string, allowFallbackAdd bool) ([]string, error) {
+	protocols, err := h.desiredForwardProtocols(forward)
+	if err != nil {
+		return nil, err
+	}
+	return h.syncForwardServicesForProtocolsWithWarnings(forward, method, allowFallbackAdd, protocols)
+}
+
+func (h *Handler) desiredForwardProtocols(forward *forwardRecord) ([]string, error) {
 	if h == nil || forward == nil {
 		return nil, errors.New("invalid forward sync context")
+	}
+	line, err := h.repo.GetBusinessLineByForwardID(forward.ID)
+	if err != nil {
+		return nil, err
+	}
+	if line != nil && line.ProtocolMode == model.BusinessLineProtocolTCP {
+		return []string{"tcp"}, nil
+	}
+	return []string{"tcp", "udp"}, nil
+}
+
+func (h *Handler) syncForwardServicesForProtocolsWithWarnings(forward *forwardRecord, method string, allowFallbackAdd bool, protocols []string) ([]string, error) {
+	if h == nil || forward == nil {
+		return nil, errors.New("invalid forward sync context")
+	}
+	if len(protocols) == 0 {
+		return nil, errors.New("forward protocols cannot be empty")
 	}
 
 	tunnel, err := h.getTunnelRecord(forward.TunnelID)
@@ -358,7 +383,7 @@ func (h *Handler) syncForwardServicesWithWarnings(forward *forwardRecord, method
 		if err != nil {
 			return nil, err
 		}
-		services := buildForwardServiceConfigs(serviceBase, forward, tunnel, node, fp.Port, strings.TrimSpace(fp.InIP), runtimeLimiters)
+		services := buildForwardServiceConfigsForProtocols(serviceBase, forward, tunnel, node, fp.Port, strings.TrimSpace(fp.InIP), runtimeLimiters, protocols)
 		_, err = h.sendNodeCommand(node.ID, method, services, true, false)
 		if err != nil && allowFallbackAdd && method == "UpdateService" {
 			if isNotFoundError(err) {
@@ -373,7 +398,7 @@ func (h *Handler) syncForwardServicesWithWarnings(forward *forwardRecord, method
 		}
 		if err != nil && strings.EqualFold(strings.TrimSpace(method), "UpdateService") && isCannotAssignRequestedAddressError(err) {
 			var warning string
-			warning, err = h.fallbackForwardPortToDefaultBind(forward, tunnel, node, fp, serviceBase, runtimeLimiters)
+			warning, err = h.fallbackForwardPortToDefaultBind(forward, tunnel, node, fp, serviceBase, runtimeLimiters, protocols)
 			if err == nil && warning != "" {
 				warnings = append(warnings, warning)
 			}
@@ -399,7 +424,7 @@ func (h *Handler) syncForwardServicesWithWarnings(forward *forwardRecord, method
 	return warnings, nil
 }
 
-func (h *Handler) fallbackForwardPortToDefaultBind(forward *forwardRecord, tunnel *tunnelRecord, node *nodeRecord, fp forwardPortRecord, serviceBase string, runtimeLimiters forwardRuntimeLimiters) (string, error) {
+func (h *Handler) fallbackForwardPortToDefaultBind(forward *forwardRecord, tunnel *tunnelRecord, node *nodeRecord, fp forwardPortRecord, serviceBase string, runtimeLimiters forwardRuntimeLimiters, protocols []string) (string, error) {
 	if h == nil || forward == nil || tunnel == nil || node == nil {
 		return "", errors.New("invalid bind fallback context")
 	}
@@ -416,7 +441,7 @@ func (h *Handler) fallbackForwardPortToDefaultBind(forward *forwardRecord, tunne
 	}
 
 	time.Sleep(150 * time.Millisecond)
-	defaultServices := buildForwardServiceConfigs(serviceBase, forward, tunnel, node, fp.Port, "", runtimeLimiters)
+	defaultServices := buildForwardServiceConfigsForProtocols(serviceBase, forward, tunnel, node, fp.Port, "", runtimeLimiters, protocols)
 	if _, err := h.sendNodeCommand(node.ID, "AddService", defaultServices, true, false); err != nil {
 		return "", err
 	}
@@ -1871,8 +1896,11 @@ func compactErrorMessage(msg string) string {
 }
 
 func buildForwardServiceConfigs(baseName string, forward *forwardRecord, tunnel *tunnelRecord, node *nodeRecord, port int, bindIP string, runtimeLimiters forwardRuntimeLimiters) []map[string]interface{} {
-	protocols := []string{"tcp", "udp"}
-	services := make([]map[string]interface{}, 0, 2)
+	return buildForwardServiceConfigsForProtocols(baseName, forward, tunnel, node, port, bindIP, runtimeLimiters, []string{"tcp", "udp"})
+}
+
+func buildForwardServiceConfigsForProtocols(baseName string, forward *forwardRecord, tunnel *tunnelRecord, node *nodeRecord, port int, bindIP string, runtimeLimiters forwardRuntimeLimiters, protocols []string) []map[string]interface{} {
+	services := make([]map[string]interface{}, 0, len(protocols))
 	targets := splitRemoteTargets(forward.RemoteAddr)
 	strategy := strings.TrimSpace(forward.Strategy)
 	proxyProtocolReceive, proxyProtocolSend := normalizeForwardProxyProtocol(forward.ProxyProtocol, forward.ProxyProtocolReceive, forward.ProxyProtocolSend)

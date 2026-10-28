@@ -5,8 +5,27 @@ import (
 	"reflect"
 	"testing"
 
+	"go-backend/internal/store/model"
 	"go-backend/internal/store/repo"
 )
+
+func TestBuildForwardServiceConfigsForProtocolsKeepsStableServiceIdentity(t *testing.T) {
+	forward := &forwardRecord{ID: 12, UserID: 34, TunnelID: 56, RemoteAddr: "127.0.0.1:9000", Strategy: "fifo"}
+	node := &nodeRecord{TCPListenAddr: "0.0.0.0", UDPListenAddr: "0.0.0.0"}
+	base := buildForwardServiceBaseWithResolvedUserTunnel(forward.ID, forward.UserID, 78)
+
+	tcpOnly := buildForwardServiceConfigsForProtocols(base, forward, nil, node, 10001, "", forwardRuntimeLimiters{}, []string{"tcp"})
+	if len(tcpOnly) != 1 || tcpOnly[0]["name"] != "12_34_78_tcp" {
+		t.Fatalf("unexpected tcp-only services: %#v", tcpOnly)
+	}
+	udpOnly := buildForwardServiceConfigsForProtocols(base, forward, nil, node, 10001, "", forwardRuntimeLimiters{}, []string{"udp"})
+	if len(udpOnly) != 1 || udpOnly[0]["name"] != "12_34_78_udp" {
+		t.Fatalf("unexpected udp-only runtime delta: %#v", udpOnly)
+	}
+	if model.BusinessLineProtocolTCPUDP == model.BusinessLineProtocolTCP {
+		t.Fatal("protocol constants must be distinct")
+	}
+}
 
 func TestBuildForwardControlServiceNamesPauseResume(t *testing.T) {
 	base := "12_34_56"
