@@ -2,6 +2,7 @@ import type { BusinessLineApiItem } from "@/api/types";
 
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Layers3, Plus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { AnimatedPage } from "@/components/animated-page";
 import { Button } from "@/shadcn-bridge/heroui/button";
@@ -20,6 +21,7 @@ export function BusinessLineRuleView({
   lines,
   onShowAdvanced,
 }: BusinessLineRuleViewProps) {
+  const navigate = useNavigate();
   const [expandedLineId, setExpandedLineId] = useState<number | null>(null);
   const groupedLines = useMemo(
     () =>
@@ -48,7 +50,7 @@ export function BusinessLineRuleView({
             size="sm"
             startContent={<Plus className="size-4" />}
             variant="flat"
-            onPress={() => window.location.assign("/business-line")}
+            onPress={() => navigate("/business-line")}
           >
             新增线路
           </Button>

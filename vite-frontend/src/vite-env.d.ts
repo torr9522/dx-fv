@@ -1,5 +1,10 @@
 /// <reference types="vite/client" />
-/// <reference types="vite-plugin-pwa/client" />
+
+declare const __DX_FV_BUILD__: string;
+
+interface Window {
+  __DX_FV_BUILD__?: string;
+}
 
 interface ImportMetaEnv {
   readonly VITE_API_BASE?: string;
@@ -9,12 +14,4 @@ interface ImportMetaEnv {
 
 interface ImportMeta {
   readonly env: ImportMetaEnv;
-}
-
-declare module "virtual:pwa-register" {
-  export function registerSW(options?: {
-    immediate?: boolean;
-    onNeedRefresh?: () => void;
-    onOfflineReady?: () => void;
-  }): (reloadPage?: boolean) => Promise<void>;
 }
