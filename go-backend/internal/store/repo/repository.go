@@ -3016,7 +3016,7 @@ func (r *Repository) GetUserTunnelByID(id int64) (*model.UserTunnel, error) {
 
 // ─── Migration ───────────────────────────────────────────────────────
 
-const currentSchemaVersion = 7
+const currentSchemaVersion = 8
 
 var ensurePostgresIDDefaultsFn = ensurePostgresIDDefaults
 var migrateViteConfigValueColumnTypeFn = migrateViteConfigValueColumnType
@@ -3024,6 +3024,7 @@ var migrateSpeedLimitTunnelBindingFn = migrateSpeedLimitTunnelBinding
 var migratePostgresTrafficInt64ColumnsFn = migratePostgresTrafficInt64Columns
 var migrateTunnelMetricBucketUniqueIndexFn = migrateTunnelMetricBucketUniqueIndex
 var migrateBusinessLineSchemaFn = migrateBusinessLineSchema
+var migrateBusinessLineProtocolModeFn = migrateBusinessLineProtocolMode
 
 func getSchemaVersion(db *gorm.DB) (int, error) {
 	var v model.SchemaVersion
@@ -3125,7 +3126,20 @@ func migrateSchema(db *gorm.DB) error {
 			return fmt.Errorf("apply migration 0007_add_business_line: %w", err)
 		}
 		log.Printf("database schema migration applied: 0007_add_business_line")
-		return nil
+		ver = 7
+	}
+
+	if ver < 8 {
+		if err := db.Transaction(func(tx *gorm.DB) error {
+			if err := migrateBusinessLineProtocolModeFn(tx); err != nil {
+				return err
+			}
+			return setSchemaVersion(tx, 8)
+		}); err != nil {
+			return fmt.Errorf("apply migration 0008_add_business_line_protocol_mode: %w", err)
+		}
+		log.Printf("database schema migration applied: 0008_add_business_line_protocol_mode")
+		ver = 8
 	}
 
 	if err := setSchemaVersion(db, currentSchemaVersion); err != nil {
@@ -3140,6 +3154,27 @@ func migrateBusinessLineSchema(db *gorm.DB) error {
 	}
 	if err := db.AutoMigrate(&model.BusinessLine{}); err != nil {
 		return fmt.Errorf("create business_line schema: %w", err)
+	}
+	return nil
+}
+
+func migrateBusinessLineProtocolMode(db *gorm.DB) error {
+	if db == nil {
+		return errors.New("nil db")
+	}
+	if !db.Migrator().HasTable(&model.BusinessLine{}) {
+		return errors.New("business_line table does not exist")
+	}
+	if !db.Migrator().HasColumn(&model.BusinessLine{}, "ProtocolMode") {
+		if err := db.Migrator().AddColumn(&model.BusinessLine{}, "ProtocolMode"); err != nil {
+			return fmt.Errorf("add business_line.protocol_mode: %w", err)
+		}
+	}
+	result := db.Model(&model.BusinessLine{}).
+		Where("protocol_mode IS NULL OR protocol_mode = ?", "").
+		Update("protocol_mode", model.BusinessLineProtocolTCPUDP)
+	if result.Error != nil {
+		return fmt.Errorf("default business_line.protocol_mode: %w", result.Error)
 	}
 	return nil
 }

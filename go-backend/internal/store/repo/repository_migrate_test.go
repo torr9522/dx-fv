@@ -291,12 +291,106 @@ func TestMigrateSchemaAddsVersionedBusinessLineSchema(t *testing.T) {
 	if err := db.Raw(`SELECT version FROM schema_version LIMIT 1`).Row().Scan(&version); err != nil {
 		t.Fatalf("read schema version: %v", err)
 	}
-	if version != 7 {
-		t.Fatalf("expected schema version 7, got %d", version)
+	if version != 8 {
+		t.Fatalf("expected schema version 8, got %d", version)
+	}
+	if !db.Migrator().HasColumn(&model.BusinessLine{}, "ProtocolMode") {
+		t.Fatal("expected business_line.protocol_mode column")
 	}
 
-	if err := migrateSchema(db); err != nil {
-		t.Fatalf("repeat migrateSchema: %v", err)
+	for i := 0; i < 3; i++ {
+		if err := migrateSchema(db); err != nil {
+			t.Fatalf("repeat migrateSchema %d: %v", i+1, err)
+		}
+	}
+}
+
+func TestMigrateSchema8DefaultsExistingBusinessLines(t *testing.T) {
+	db, err := gorm.Open(gsqlite.Open(":memory:"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() {
+		sqlDB, _ := db.DB()
+		if sqlDB != nil {
+			_ = sqlDB.Close()
+		}
+	})
+	if err := db.Exec(`CREATE TABLE schema_version (version INTEGER NOT NULL DEFAULT 0)`).Error; err != nil {
+		t.Fatalf("create schema_version: %v", err)
+	}
+	if err := db.Exec(`INSERT INTO schema_version(version) VALUES(7)`).Error; err != nil {
+		t.Fatalf("seed schema_version: %v", err)
+	}
+	if err := db.Exec(`CREATE TABLE business_line (id INTEGER PRIMARY KEY, name VARCHAR(150) NOT NULL)`).Error; err != nil {
+		t.Fatalf("create schema-7 business_line: %v", err)
+	}
+	if err := db.Exec(`INSERT INTO business_line(id, name) VALUES(17, 'existing')`).Error; err != nil {
+		t.Fatalf("seed business line: %v", err)
+	}
+
+	for i := 0; i < 3; i++ {
+		if err := migrateSchema(db); err != nil {
+			t.Fatalf("migrateSchema run %d: %v", i+1, err)
+		}
+	}
+	var id int64
+	var protocolMode string
+	if err := db.Raw(`SELECT id, protocol_mode FROM business_line WHERE id = 17`).Row().Scan(&id, &protocolMode); err != nil {
+		t.Fatalf("read migrated business line: %v", err)
+	}
+	if id != 17 || protocolMode != model.BusinessLineProtocolTCPUDP {
+		t.Fatalf("expected id=17 protocol=tcp_udp, got id=%d protocol=%q", id, protocolMode)
+	}
+	var version int
+	if err := db.Raw(`SELECT version FROM schema_version LIMIT 1`).Row().Scan(&version); err != nil {
+		t.Fatalf("read schema version: %v", err)
+	}
+	if version != 8 {
+		t.Fatalf("expected schema version 8, got %d", version)
+	}
+}
+
+func TestMigrateSchemaRollsBackFailedBusinessLineProtocolMigration(t *testing.T) {
+	db, err := gorm.Open(gsqlite.Open(":memory:"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() {
+		sqlDB, _ := db.DB()
+		if sqlDB != nil {
+			_ = sqlDB.Close()
+		}
+	})
+	if err := db.Exec(`CREATE TABLE schema_version (version INTEGER NOT NULL DEFAULT 0)`).Error; err != nil {
+		t.Fatalf("create schema_version: %v", err)
+	}
+	if err := db.Exec(`INSERT INTO schema_version(version) VALUES(7)`).Error; err != nil {
+		t.Fatalf("seed schema_version: %v", err)
+	}
+	wantErr := errors.New("injected protocol migration failure")
+	original := migrateBusinessLineProtocolModeFn
+	migrateBusinessLineProtocolModeFn = func(tx *gorm.DB) error {
+		if err := tx.Exec(`CREATE TABLE protocol_migration_partial (id INTEGER PRIMARY KEY)`).Error; err != nil {
+			return err
+		}
+		return wantErr
+	}
+	t.Cleanup(func() { migrateBusinessLineProtocolModeFn = original })
+
+	err = migrateSchema(db)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected %v, got %v", wantErr, err)
+	}
+	if db.Migrator().HasTable("protocol_migration_partial") {
+		t.Fatal("failed migration left partial schema")
+	}
+	var version int
+	if err := db.Raw(`SELECT version FROM schema_version LIMIT 1`).Row().Scan(&version); err != nil {
+		t.Fatalf("read schema version: %v", err)
+	}
+	if version != 7 {
+		t.Fatalf("expected schema version 7 after rollback, got %d", version)
 	}
 }
 

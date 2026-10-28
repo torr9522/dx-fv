@@ -95,3 +95,34 @@ func TestBusinessLineTunnelReadsUseOpenTransaction(t *testing.T) {
 		t.Fatalf("TunnelEntryNodeIDsTx() = %v, %v", ids, err)
 	}
 }
+
+func TestUpdateBusinessLineProtocolModeUsesExpectedState(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&model.BusinessLine{}); err != nil {
+		t.Fatalf("migrate business line: %v", err)
+	}
+	line := model.BusinessLine{
+		Name: "line", PathType: "qix", ProtocolMode: model.BusinessLineProtocolTCPUDP,
+		Status: "active", CreatedTime: 1, UpdatedTime: 1,
+	}
+	if err := db.Create(&line).Error; err != nil {
+		t.Fatalf("create business line: %v", err)
+	}
+	r := &Repository{db: db}
+	if err := r.UpdateBusinessLineProtocolMode(line.ID, model.BusinessLineProtocolTCPUDP, model.BusinessLineProtocolTCP, 2); err != nil {
+		t.Fatalf("update protocol: %v", err)
+	}
+	if err := r.UpdateBusinessLineProtocolMode(line.ID, model.BusinessLineProtocolTCPUDP, model.BusinessLineProtocolTCP, 3); err == nil {
+		t.Fatal("expected stale protocol update to fail")
+	}
+	got, err := r.GetBusinessLine(line.ID)
+	if err != nil {
+		t.Fatalf("get business line: %v", err)
+	}
+	if got.ProtocolMode != model.BusinessLineProtocolTCP || got.UpdatedTime != 2 {
+		t.Fatalf("unexpected line after update: %#v", got)
+	}
+}

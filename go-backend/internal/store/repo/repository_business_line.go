@@ -32,6 +32,37 @@ func (r *Repository) GetBusinessLine(id int64) (*model.BusinessLine, error) {
 	return &row, nil
 }
 
+func (r *Repository) GetBusinessLineByForwardID(forwardID int64) (*model.BusinessLine, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("repository not initialized")
+	}
+	var row model.BusinessLine
+	err := r.db.Where("gz_forward_id = ? OR ix_forward_id = ?", forwardID, forwardID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (r *Repository) UpdateBusinessLineProtocolMode(id int64, expectedMode, nextMode string, updatedTime int64) error {
+	if r == nil || r.db == nil {
+		return errors.New("repository not initialized")
+	}
+	result := r.db.Model(&model.BusinessLine{}).
+		Where("id = ? AND protocol_mode = ?", id, expectedMode).
+		Updates(map[string]interface{}{"protocol_mode": nextMode, "updated_time": updatedTime})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return errors.New("business line protocol mode changed concurrently")
+	}
+	return nil
+}
+
 func (r *Repository) CreateBusinessLineTx(tx *gorm.DB, row *model.BusinessLine) error {
 	if tx == nil || row == nil {
 		return errors.New("database unavailable")
