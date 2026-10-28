@@ -1,5 +1,6 @@
 import type {
   BatchOperationFailure,
+  BusinessLineApiItem,
   ForwardApiItem,
   SpeedLimitApiItem,
 } from "@/api/types";
@@ -58,6 +59,7 @@ import { Checkbox } from "@/shadcn-bridge/heroui/checkbox";
 import { Accordion, AccordionItem } from "@/shadcn-bridge/heroui/accordion";
 import {
   createForward,
+  getBusinessLineList,
   getForwardList,
   getSpeedLimitList,
   getPeerShareList,
@@ -101,6 +103,7 @@ import {
 } from "@/pages/forward/import-format";
 import { buildForwardOrder, FORWARD_ORDER_KEY } from "@/pages/forward/order";
 import { PageLoadingState } from "@/components/page-state";
+import { BusinessLineRuleView } from "@/pages/business-line-rule-view";
 // import { useMobileBreakpoint } from "@/hooks/useMobileBreakpoint";
 import { saveOrder } from "@/utils/order-storage";
 import { JwtUtil } from "@/utils/jwt";
@@ -1232,6 +1235,10 @@ export default function ForwardPage() {
   const tokenUserId = JwtUtil.getUserIdFromToken();
   const tokenRoleId = JwtUtil.getRoleIdFromToken();
   const isAdmin = tokenRoleId === 0;
+  const [ruleLayer, setRuleLayer] = useState<"business" | "advanced">(
+    isAdmin ? "business" : "advanced",
+  );
+  const [businessLines, setBusinessLines] = useState<BusinessLineApiItem[]>([]);
 
   const [compactMode, setCompactMode] = useState(false);
 
@@ -2029,10 +2036,12 @@ export default function ForwardPage() {
     async (lod = true) => {
       setLoading(lod);
       try {
-        const [tunnelsRes, speedLimitsRes] = await Promise.all([
-          userTunnel(),
-          getSpeedLimitList(),
-        ]);
+        const [tunnelsRes, speedLimitsRes, businessLinesRes] =
+          await Promise.all([
+            userTunnel(),
+            getSpeedLimitList(),
+            getBusinessLineList(),
+          ]);
         const [allTunnelsRes, nodesRes] = await Promise.allSettled([
           getTunnelList(),
           getNodeList(),
@@ -2059,13 +2068,19 @@ export default function ForwardPage() {
         if (speedLimitsRes.code === 0) {
           setSpeedLimits(speedLimitsRes.data || []);
         }
+
+        if (businessLinesRes.code === 0) {
+          setBusinessLines(businessLinesRes.data || []);
+        } else if (isAdmin) {
+          toast.error(businessLinesRes.msg || "获取业务线路失败");
+        }
       } catch {
         toast.error("加载数据失败");
       } finally {
         setLoading(false);
       }
     },
-    [refreshForwardList],
+    [isAdmin, refreshForwardList],
   );
 
   useEffect(() => {
@@ -4154,6 +4169,15 @@ export default function ForwardPage() {
     return <PageLoadingState message="正在加载..." />;
   }
 
+  if (isAdmin && ruleLayer === "business") {
+    return (
+      <BusinessLineRuleView
+        lines={businessLines}
+        onShowAdvanced={() => setRuleLayer("advanced")}
+      />
+    );
+  }
+
   return (
     <AnimatedPage className="px-3 lg:px-6 py-8">
       {/* 页面头部 */}
@@ -4265,6 +4289,16 @@ export default function ForwardPage() {
               </>
             ) : (
               <>
+                {isAdmin && (
+                  <Button
+                    color="primary"
+                    size="sm"
+                    variant="flat"
+                    onPress={() => setRuleLayer("business")}
+                  >
+                    业务线路视图
+                  </Button>
+                )}
                 {/* 显示模式切换按钮 */}
                 <Button
                   isIconOnly
