@@ -588,19 +588,70 @@ func TestTunnelUpdateRecoversFromAddressInUseContract(t *testing.T) {
 		t.Fatalf("insert exit chain_tunnel: %v", err)
 	}
 
+	// Node-online reconciliation runs asynchronously after the websocket status
+	// changes to online. Use a final, node-local marker service to know that the
+	// bootstrap reconcile has completed before measuring the update contract.
+	insertReadyMarker := func(name string, nodeID int64, port int) int64 {
+		t.Helper()
+		if err := r.DB().Exec(`
+			INSERT INTO tunnel(name, traffic_ratio, type, protocol, flow, created_time, updated_time, status, in_ip, inx)
+			VALUES(?, 1, 2, 'tls', 99999, ?, ?, 1, NULL, 0)
+		`, name, now, now).Error; err != nil {
+			t.Fatalf("insert ready marker tunnel %s: %v", name, err)
+		}
+		markerID := mustLastInsertID(t, r, name)
+		if err := r.DB().Exec(`
+			INSERT INTO chain_tunnel(tunnel_id, chain_type, node_id, port, strategy, inx, protocol)
+			VALUES(?, 1, ?, ?, 'round', 1, 'tls'),
+			       (?, 3, ?, ?, 'round', 1, 'tls')
+		`, markerID, nodeID, port, markerID, nodeID, port).Error; err != nil {
+			t.Fatalf("insert ready marker chains %s: %v", name, err)
+		}
+		return markerID
+	}
+	entryReadyMarkerID := insertReadyMarker("tunnel-bind-entry-ready", entryNodeID, 43009)
+	exitReadyMarkerID := insertReadyMarker("tunnel-bind-exit-ready", exitNodeID, 43109)
+	entryReadyService := fmt.Sprintf("tunnel_%d", entryReadyMarkerID)
+	exitReadyService := fmt.Sprintf("tunnel_%d", exitReadyMarkerID)
+
 	var commandMu sync.Mutex
 	commandCounts := map[string]int{}
 	var addServiceAddrs []string
+	updateStarted := false
+	entryReady := make(chan struct{})
+	exitReady := make(chan struct{})
+	var entryReadyOnce sync.Once
+	var exitReadyOnce sync.Once
 	stopEntry := startMockNodeSessionWithCommandRecorder(t, server.URL, "tunnel-bind-entry-secret", func(cmdType string, data json.RawMessage) (bool, string) {
+		if strings.EqualFold(strings.TrimSpace(cmdType), "AddService") && commandHasServiceName(data, entryReadyService) {
+			entryReadyOnce.Do(func() { close(entryReady) })
+		}
 		commandMu.Lock()
 		defer commandMu.Unlock()
+		if !updateStarted {
+			return false, ""
+		}
 		commandCounts["entry:"+strings.ToLower(strings.TrimSpace(cmdType))]++
 		return false, ""
 	})
 	defer stopEntry()
+	waitNodeStatus(t, r, entryNodeID, 1)
+	select {
+	case <-entryReady:
+	case <-time.After(5 * time.Second):
+		t.Fatal("entry node bootstrap reconciliation did not finish")
+	}
+
 	stopExit := startMockNodeSessionWithCommandRecorder(t, server.URL, "tunnel-bind-exit-secret", func(cmdType string, data json.RawMessage) (bool, string) {
+		if strings.EqualFold(strings.TrimSpace(cmdType), "AddService") && commandHasServiceName(data, exitReadyService) {
+			exitReadyOnce.Do(func() { close(exitReady) })
+		}
 		key := "exit:" + strings.ToLower(strings.TrimSpace(cmdType))
 		commandMu.Lock()
+		if !updateStarted {
+			commandMu.Unlock()
+			return false, ""
+		}
 		commandCounts[key]++
 		attempt := commandCounts[key]
 		if strings.EqualFold(strings.TrimSpace(cmdType), "AddService") {
@@ -620,8 +671,24 @@ func TestTunnelUpdateRecoversFromAddressInUseContract(t *testing.T) {
 		return false, ""
 	})
 	defer stopExit()
-	waitNodeStatus(t, r, entryNodeID, 1)
 	waitNodeStatus(t, r, exitNodeID, 1)
+	select {
+	case <-exitReady:
+	case <-time.After(5 * time.Second):
+		t.Fatal("exit node bootstrap reconciliation did not finish")
+	}
+
+	if err := r.DB().Exec(`DELETE FROM chain_tunnel WHERE tunnel_id IN (?, ?)`, entryReadyMarkerID, exitReadyMarkerID).Error; err != nil {
+		t.Fatalf("delete ready marker chains: %v", err)
+	}
+	if err := r.DB().Exec(`DELETE FROM tunnel WHERE id IN (?, ?)`, entryReadyMarkerID, exitReadyMarkerID).Error; err != nil {
+		t.Fatalf("delete ready marker tunnels: %v", err)
+	}
+	commandMu.Lock()
+	commandCounts = map[string]int{}
+	addServiceAddrs = nil
+	updateStarted = true
+	commandMu.Unlock()
 
 	payload := map[string]interface{}{
 		"id":           tunnelID,
@@ -665,6 +732,19 @@ func TestTunnelUpdateRecoversFromAddressInUseContract(t *testing.T) {
 			t.Fatalf("expected connectIp to stay preferred in AddService addr, got %q", addr)
 		}
 	}
+}
+
+func commandHasServiceName(data json.RawMessage, want string) bool {
+	var services []map[string]interface{}
+	if err := json.Unmarshal(data, &services); err != nil {
+		return false
+	}
+	for _, service := range services {
+		if name, _ := service["name"].(string); strings.TrimSpace(name) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestTunnelUpdateChangesEntryNodeButLeavesOldForwardRuntimeContract(t *testing.T) {
