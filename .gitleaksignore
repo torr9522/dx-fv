@@ -1,7 +1,8 @@
-# Audited upstream false positives. Keep entries as exact fingerprints so other
-# findings in the same file or commit are still reported.
-0e24b53a5b6430aec3a74a596d2122f4bc76fa7b:go-backend/internal/http/handler/license_validation.go:generic-api-key:10
-58abba7fc05dbca6f89f82d3f0ff6274c5ecedaf:skills/flvx-api/SKILL.md:generic-api-key:81
-58abba7fc05dbca6f89f82d3f0ff6274c5ecedaf:skills/flvx-api/references/auth.md:curl-auth-header:91
-58abba7fc05dbca6f89f82d3f0ff6274c5ecedaf:skills/flvx-api/references/auth.md:generic-api-key:22
-b1647ed309af68a05d70f128ac316f4d5f7c694e:android-app/app/src/main/assets/assets/index-jxskBxXq.js:generic-api-key:130539
+# Audited fictional API examples. Keep both full-history and current-tree
+# fingerprints exact so unrelated findings in these files are still reported.
+a5240dc45bcc21a9571bbea9745b423dbc166733:skills/flvx-api/SKILL.md:generic-api-key:81
+a5240dc45bcc21a9571bbea9745b423dbc166733:skills/flvx-api/references/auth.md:curl-auth-header:91
+a5240dc45bcc21a9571bbea9745b423dbc166733:skills/flvx-api/references/auth.md:generic-api-key:22
+skills/flvx-api/SKILL.md:generic-api-key:81
+skills/flvx-api/references/auth.md:curl-auth-header:91
+skills/flvx-api/references/auth.md:generic-api-key:22

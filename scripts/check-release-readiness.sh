@@ -7,6 +7,12 @@ repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
 }
 cd "$repo_root"
 
+readonly UPSTREAM_BASE_COMMIT=3549fe5ad8a6e9b863b3e4f7b9bf738facff87ee
+readonly UPSTREAM_BASE_TREE=6076e2ad5bc0ac0934d9c0a19b433661ff14db0b
+readonly CLEAN_BASELINE_COMMIT=a5240dc45bcc21a9571bbea9745b423dbc166733
+readonly REPLAYED_DX_TIP=a985781c45bb7d600d886fd9643c994ba353fe11
+readonly REPLAYED_DX_COUNT=15
+
 failures=0
 checks=0
 
@@ -114,9 +120,23 @@ for tool in go node pnpm gitleaks; do
 done
 
 if command -v gitleaks >/dev/null 2>&1; then
-  secret_report="$tmp_dir/gitleaks.json"
-  if gitleaks git --no-banner --redact --report-format json \
-      --report-path "$secret_report" "$repo_root"; then
+	current_secret_report="$tmp_dir/gitleaks-current.json"
+	if gitleaks dir --no-banner --redact --report-format json \
+			--report-path "$current_secret_report" "$repo_root"; then
+		pass "gitleaks scan of current worktree"
+	else
+		count=unknown
+		[[ -s "$current_secret_report" ]] && count=$(jq 'length' "$current_secret_report" 2>/dev/null || echo unknown)
+		fail "gitleaks reported $count non-allowlisted current-tree finding(s)"
+		if command -v jq >/dev/null 2>&1 && [[ -s "$current_secret_report" ]]; then
+			jq -r '.[] | [.RuleID,.File,(.StartLine|tostring)] | @tsv' \
+				"$current_secret_report" | sort -u >&2
+		fi
+	fi
+
+	secret_report="$tmp_dir/gitleaks.json"
+	if gitleaks git --no-banner --redact --report-format json \
+			--report-path "$secret_report" "$repo_root"; then
     pass "gitleaks scan of reachable Git history"
   else
     count=unknown
@@ -125,8 +145,71 @@ if command -v gitleaks >/dev/null 2>&1; then
     if command -v jq >/dev/null 2>&1 && [[ -s "$secret_report" ]]; then
       jq -r '.[] | [.RuleID,.File,(.StartLine|tostring),(.Commit[0:12])] | @tsv' \
         "$secret_report" | sort -u >&2
-    fi
-  fi
+		fi
+	fi
+
+	known_sensitive_commits=(
+		9fa968d07cd6c7bc55b479a81c201f5e57d051be
+		47696e928b14650e009def17dcb13320ec932a8c
+	)
+	known_sensitive_reachable=()
+	for commit in "${known_sensitive_commits[@]}"; do
+		if git rev-list --all | grep -Fqx "$commit"; then
+			known_sensitive_reachable+=("$commit")
+		fi
+	done
+	if ((${#known_sensitive_reachable[@]} == 0)); then
+		pass "known sensitive upstream commits are not reachable"
+	else
+		fail "known sensitive upstream commits are reachable: ${known_sensitive_reachable[*]}"
+	fi
+
+	self_test_dir="$tmp_dir/gitleaks-self-test"
+	mkdir -p "$self_test_dir"
+	printf '%s%s%s\n' 'AK' 'IA' 'ABCDEFGHIJKLMNOP' >"$self_test_dir/fixture.txt"
+	if gitleaks dir --no-banner --redact "$self_test_dir" >/dev/null 2>&1; then
+		fail "gitleaks self-test did not detect the synthetic secret"
+	else
+		pass "gitleaks self-test rejects a synthetic secret"
+	fi
+	find "$self_test_dir" -type f -delete
+	if gitleaks dir --no-banner --redact "$self_test_dir" >/dev/null 2>&1; then
+		pass "gitleaks self-test recovers after fixture removal"
+	else
+		fail "gitleaks self-test still fails after fixture removal"
+	fi
+fi
+
+provenance_ok=true
+mapfile -t root_commits < <(git rev-list --max-parents=0 HEAD)
+if ((${#root_commits[@]} != 1)) || [[ "${root_commits[0]:-}" != "$CLEAN_BASELINE_COMMIT" ]]; then
+	provenance_ok=false
+fi
+if [[ $(git rev-parse "$CLEAN_BASELINE_COMMIT^{tree}" 2>/dev/null || true) != "$UPSTREAM_BASE_TREE" ]]; then
+	provenance_ok=false
+fi
+if ! git merge-base --is-ancestor "$REPLAYED_DX_TIP" HEAD 2>/dev/null; then
+	provenance_ok=false
+fi
+if [[ $(git rev-list --count "$CLEAN_BASELINE_COMMIT..$REPLAYED_DX_TIP" 2>/dev/null || true) != "$REPLAYED_DX_COUNT" ]]; then
+	provenance_ok=false
+fi
+while IFS=$'\t' read -r new_commit original_commit; do
+	if [[ -z "$original_commit" ]] ||
+			! grep -Fq "$new_commit" docs/dx/provenance.md ||
+			! grep -Fq "$original_commit" docs/dx/provenance.md; then
+		provenance_ok=false
+	fi
+done < <(git log --reverse --format='%H%x09%(trailers:key=Original-Commit,valueonly)' \
+	"$CLEAN_BASELINE_COMMIT..$REPLAYED_DX_TIP")
+if ! grep -Fq "$UPSTREAM_BASE_COMMIT" docs/dx/provenance.md ||
+		! grep -Fq "$UPSTREAM_BASE_TREE" docs/dx/provenance.md; then
+	provenance_ok=false
+fi
+if $provenance_ok; then
+	pass "independent-history provenance and DX replay mapping"
+else
+	fail "independent-history provenance or DX replay mapping is invalid"
 fi
 
 if command -v go >/dev/null 2>&1; then
@@ -141,13 +224,12 @@ if command -v go >/dev/null 2>&1; then
     fail "unsupported Go version: ${go_version:-unknown}; require patched Go 1.26.10+"
   fi
 
-  upstream_base=3549fe5ad8a6e9b863b3e4f7b9bf738facff87ee
-  if git cat-file -e "$upstream_base^{commit}" 2>/dev/null; then
-    mapfile -t changed_go_files < <(
-      {
-        git diff --name-only "$upstream_base"..HEAD -- '*.go'
-        git diff --name-only -- '*.go'
-        git diff --cached --name-only -- '*.go'
+	if git cat-file -e "$CLEAN_BASELINE_COMMIT^{commit}" 2>/dev/null; then
+		mapfile -t changed_go_files < <(
+			{
+				git diff --name-only "$CLEAN_BASELINE_COMMIT"..HEAD -- '*.go'
+				git diff --name-only -- '*.go'
+				git diff --cached --name-only -- '*.go'
       } | sort -u
     )
     if ((${#changed_go_files[@]} == 0)); then
@@ -159,11 +241,11 @@ if command -v go >/dev/null 2>&1; then
       else
         printf '%s\n' "$gofmt_output" >&2
         fail "gofmt check for downstream Go changes"
-      fi
-    fi
-  else
-    fail "fixed upstream baseline commit is missing"
-  fi
+			fi
+		fi
+	else
+		fail "clean baseline commit is missing"
+	fi
   run "backend migration tests repeated 3 times" bash -c \
     'cd go-backend && TZ=UTC go test ./internal/store/repo -run "TestMigrateSchema" -count=3'
   run "backend tests" bash -c 'cd go-backend && TZ=UTC go test ./...'
