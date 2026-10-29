@@ -122,7 +122,7 @@ done
 if command -v gitleaks >/dev/null 2>&1; then
 	current_secret_report="$tmp_dir/gitleaks-current.json"
 	if gitleaks dir --no-banner --redact --report-format json \
-			--report-path "$current_secret_report" "$repo_root"; then
+			--report-path "$current_secret_report" .; then
 		pass "gitleaks scan of current worktree"
 	else
 		count=unknown
@@ -195,6 +195,9 @@ if [[ $(git rev-list --count "$CLEAN_BASELINE_COMMIT..$REPLAYED_DX_TIP" 2>/dev/n
 	provenance_ok=false
 fi
 while IFS=$'\t' read -r new_commit original_commit; do
+	if [[ -z "$new_commit" && -z "$original_commit" ]]; then
+		continue
+	fi
 	if [[ -z "$original_commit" ]] ||
 			! grep -Fq "$new_commit" docs/dx/provenance.md ||
 			! grep -Fq "$original_commit" docs/dx/provenance.md; then
