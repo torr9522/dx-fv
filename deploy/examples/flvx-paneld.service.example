@@ -1,0 +1,22 @@
+[Unit]
+Description=FLVX downstream test panel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=flvx
+Group=flvx
+EnvironmentFile=/etc/flvx-test/panel.env
+ExecStart=/opt/flvx-test/flvx-paneld
+WorkingDirectory=/opt/flvx-test
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/flvx-test /var/log/flvx-test
+
+[Install]
+WantedBy=multi-user.target

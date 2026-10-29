@@ -2,6 +2,18 @@
 
 > **联系我们**: [Telegram群组](https://t.me/flvxchannel)
 
+## DX 二开维护分支
+
+本仓库的 `dx-fv-dev` 分支是在 FLVX `3.0.1-rc6`（上游提交
+`3549fe5ad8a6e9b863b3e4f7b9bf738facff87ee`）基础上的下游二开。上游项目、版权和
+许可证归属没有改变；二开功能基线为
+`8196178745fbfa51ad5c5efaa09577daab28a61c`，包含 BusinessLine、前海IX自动端口、
+QIX共享 Tunnel、版本化迁移、TCP/TCP+UDP 模式和前端缓存修复。
+
+维护、构建和部署该分支前，请先阅读 [DX 维护索引](docs/dx/README.md)。其中明确区分
+开发/DX 已验证能力与尚未部署到生产的能力。不要直接使用下面的上游安装命令覆盖现有
+DX 或生产环境。
+
 
 ## 特性
 

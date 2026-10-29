@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "FAIL: run this script inside a Git worktree" >&2
+  exit 1
+}
+cd "$repo_root"
+
+failures=0
+checks=0
+
+pass() {
+  checks=$((checks + 1))
+  printf 'PASS: %s\n' "$1"
+}
+
+fail() {
+  checks=$((checks + 1))
+  failures=$((failures + 1))
+  printf 'FAIL: %s\n' "$1" >&2
+}
+
+run() {
+  local label=$1
+  shift
+  if "$@"; then
+    pass "$label"
+  else
+    fail "$label"
+  fi
+}
+
+require_command() {
+  if command -v "$1" >/dev/null 2>&1; then
+    pass "required command: $1"
+  else
+    fail "missing required command: $1"
+    return 1
+  fi
+}
+
+tmp_dir=$(mktemp -d /tmp/flvx-release-check.XXXXXX)
+trap 'find "$tmp_dir" -depth -delete 2>/dev/null || true' EXIT
+
+required_files=(
+  LICENSE LICENSE-APACHE NOTICE README.md .gitignore .gitleaksignore
+  docs/dx/README.md docs/dx/architecture.md docs/dx/development.md
+  docs/dx/database-migrations.md docs/dx/deployment.md
+  docs/dx/design-decisions.md docs/dx/known-limitations.md
+  docs/dx/project-history.md docs/dx/provenance.md
+  docs/dx/release-process.md docs/dx/handover.md
+  deploy/examples/panel.env.example deploy/examples/flvx-paneld.service.example
+  deploy/examples/Caddyfile.example
+)
+
+missing=()
+for path in "${required_files[@]}"; do
+  [[ -s "$path" ]] || missing+=("$path")
+done
+if ((${#missing[@]} == 0)); then
+  pass "required licenses, documentation, and examples are present"
+else
+  fail "missing required files: ${missing[*]}"
+fi
+
+if [[ -z $(git status --porcelain=v1) ]]; then
+  pass "worktree is clean"
+else
+  fail "worktree is not clean"
+fi
+
+run "patch whitespace check" git diff --check HEAD
+
+forbidden_report="$tmp_dir/forbidden-tracked-files.txt"
+while IFS= read -r path; do
+  lower=${path,,}
+  case "$lower" in
+    vite-frontend/.env.development|vite-frontend/.env.production)
+      continue
+      ;;
+    *.db|*.sqlite|*.sqlite3|*.pem|*.key|*.p12|*.pfx|*.pcap|*.pcapng|*.log|*/.env|*/.env.*|.env|.env.*|*/auth.json|*/device.id|*/gost.json|*/agent-state*|*/agent_state*|go-backend/cmd/paneld/paneld|test-results/*)
+      printf '%s\n' "$path" >>"$forbidden_report"
+      ;;
+  esac
+done < <(git ls-files)
+
+if [[ -s "$forbidden_report" ]]; then
+  fail "forbidden runtime/secret/build files are tracked (see $forbidden_report during this run)"
+  sed -n '1,100p' "$forbidden_report" >&2
+else
+  pass "no forbidden runtime/secret/build paths are tracked"
+fi
+
+lfs_report="$tmp_dir/lfs-pointers.txt"
+while IFS= read -r path; do
+  if [[ -f "$path" ]] && head -n 1 "$path" 2>/dev/null | grep -qx 'version https://git-lfs.github.com/spec/v1'; then
+    printf '%s\n' "$path" >>"$lfs_report"
+  fi
+done < <(git ls-files)
+if [[ -s "$lfs_report" ]]; then
+  if command -v git-lfs >/dev/null 2>&1; then
+    run "Git LFS object integrity" git lfs fsck
+  else
+    fail "Git LFS pointers exist but git-lfs is not installed"
+  fi
+else
+  pass "no Git LFS pointers are tracked"
+fi
+
+for tool in go node pnpm gitleaks; do
+  require_command "$tool" || true
+done
+
+if command -v gitleaks >/dev/null 2>&1; then
+  secret_report="$tmp_dir/gitleaks.json"
+  if gitleaks git --no-banner --redact --report-format json \
+      --report-path "$secret_report" "$repo_root"; then
+    pass "gitleaks scan of reachable Git history"
+  else
+    count=unknown
+    [[ -s "$secret_report" ]] && count=$(jq 'length' "$secret_report" 2>/dev/null || echo unknown)
+    fail "gitleaks reported $count non-allowlisted historical finding(s)"
+    if command -v jq >/dev/null 2>&1 && [[ -s "$secret_report" ]]; then
+      jq -r '.[] | [.RuleID,.File,(.StartLine|tostring),(.Commit[0:12])] | @tsv' \
+        "$secret_report" | sort -u >&2
+    fi
+  fi
+fi
+
+if command -v go >/dev/null 2>&1; then
+  go_version=$(go env GOVERSION 2>/dev/null || true)
+  go_number=${go_version#go}
+  go_floor=$(printf '%s\n%s\n' 1.26.10 "$go_number" | sort -V | head -n 1)
+  if [[ "$go_floor" == "1.26.10" &&
+        "$go_number" != "1.27.0" && "$go_number" != "1.27.1" &&
+        "$go_number" != "1.27.2" ]]; then
+    pass "supported Go version: $go_version"
+  else
+    fail "unsupported Go version: ${go_version:-unknown}; require patched Go 1.26.10+"
+  fi
+
+  upstream_base=3549fe5ad8a6e9b863b3e4f7b9bf738facff87ee
+  if git cat-file -e "$upstream_base^{commit}" 2>/dev/null; then
+    mapfile -t changed_go_files < <(
+      {
+        git diff --name-only "$upstream_base"..HEAD -- '*.go'
+        git diff --name-only -- '*.go'
+        git diff --cached --name-only -- '*.go'
+      } | sort -u
+    )
+    if ((${#changed_go_files[@]} == 0)); then
+      pass "gofmt check (no downstream Go changes)"
+    else
+      gofmt_output=$(gofmt -l "${changed_go_files[@]}" 2>&1)
+      if [[ -z "$gofmt_output" ]]; then
+        pass "gofmt check for downstream Go changes"
+      else
+        printf '%s\n' "$gofmt_output" >&2
+        fail "gofmt check for downstream Go changes"
+      fi
+    fi
+  else
+    fail "fixed upstream baseline commit is missing"
+  fi
+  run "backend migration tests repeated 3 times" bash -c \
+    'cd go-backend && TZ=UTC go test ./internal/store/repo -run "TestMigrateSchema" -count=3'
+  run "backend tests" bash -c 'cd go-backend && TZ=UTC go test ./...'
+  run "backend build" bash -c \
+    'cd go-backend && go build -o "$1/paneld" ./cmd/paneld' _ "$tmp_dir"
+  run "go-gost/x tests" bash -c 'cd go-gost/x && go test ./...'
+  run "Agent tests" bash -c 'cd go-gost && go test ./...'
+  run "Agent build" bash -c \
+    'cd go-gost && CGO_ENABLED=0 go build -o "$1/gost" .' _ "$tmp_dir"
+fi
+
+if command -v node >/dev/null 2>&1 && command -v pnpm >/dev/null 2>&1; then
+  node_version=$(node --version 2>/dev/null || true)
+  pnpm_version=$(pnpm --version 2>/dev/null || true)
+  [[ "$node_version" == "v22.23.4" ]] && pass "pinned Node version: $node_version" || \
+    fail "Node version is $node_version; publication uses v22.23.4"
+  [[ "$pnpm_version" == "10.28.1" ]] && pass "pinned pnpm version: $pnpm_version" || \
+    fail "pnpm version is $pnpm_version; publication uses 10.28.1"
+
+  run "frontend dependency lock" bash -c \
+    'cd vite-frontend && pnpm install --frozen-lockfile'
+  run "frontend lint" bash -c 'cd vite-frontend && pnpm exec eslint .'
+  run "frontend build" bash -c \
+    'cd vite-frontend && DX_FV_BUILD="$(git rev-parse HEAD)" pnpm run build'
+  if [[ -s vite-frontend/dist/index.html ]] &&
+      find vite-frontend/dist/assets -maxdepth 1 -type f -name '*.js' -print -quit 2>/dev/null | grep -q .; then
+    pass "frontend artifact contains index.html and hashed JavaScript"
+  else
+    fail "frontend artifact is incomplete"
+  fi
+fi
+
+printf '\nRelease-readiness checks: %d total, %d failed\n' "$checks" "$failures"
+if ((failures > 0)); then
+  exit 1
+fi

@@ -56,6 +56,18 @@ FLVX — traffic forwarding panel: Go admin API + Vite/React UI + Go agent.
 - Frontend: no test infrastructure.
 - CI runs one PostgreSQL contract test: env var `FLVX_POSTGRES_TEST_DSN`.
 
+## DX downstream handover
+
+- Read `docs/dx/README.md` before changing BusinessLine orchestration or deployment.
+- Treat production and DX resources as separate environments. Never copy node, tunnel,
+  database, or credential values between them.
+- `BusinessLine` schema changes are versioned in `migrateSchema`; do not add that model
+  to the generic startup AutoMigrate list.
+- Frontend releases use a versioned directory plus an atomic `frontend-current`
+  symlink. Do not deploy by overlay-copying files into the active directory.
+- The downstream frontend intentionally does not register the upstream PWA or perform
+  automatic upstream update checks.
+
 ## Build quirks
 
 - `vite-frontend` uses `rolldown-vite` (Rust bundler), not standard Vite.

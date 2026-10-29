@@ -24,7 +24,9 @@ Admin API for FLVX. Go + net/http + GORM (SQLite/PostgreSQL).
 - **GORM**: `TableName()` on every model (GORM pluralizes by default).
 - **GORM tags**: no `type:jsonb` or `type:serial` (SQLite incompatible).
 - **SQLite**: `MaxOpenConns(1)`, WAL mode, `busy_timeout=5000`.
-- **Schema**: created via `autoMigrateAll()` at startup, no hand-written DDL.
+- **Schema**: most tables are created via `autoMigrateAll()`. `BusinessLine` is the
+  exception: migrations 0007 and 0008 are applied transactionally by `migrateSchema`
+  and it must not be added to the generic AutoMigrate list.
 - **PostgreSQL**: set `DB_TYPE=postgres` and `DATABASE_URL` env vars.
 - **Config**: all from environment variables.
 
