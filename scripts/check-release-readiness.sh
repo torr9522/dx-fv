@@ -45,6 +45,7 @@ trap 'find "$tmp_dir" -depth -delete 2>/dev/null || true' EXIT
 
 required_files=(
   LICENSE LICENSE-APACHE NOTICE README.md .gitignore .gitleaksignore
+  go-gost/LICENSE go-gost/x/LICENSE vite-frontend/LICENSE
   docs/dx/README.md docs/dx/architecture.md docs/dx/development.md
   docs/dx/database-migrations.md docs/dx/deployment.md
   docs/dx/design-decisions.md docs/dx/known-limitations.md

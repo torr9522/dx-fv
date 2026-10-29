@@ -17,3 +17,9 @@ Modifications and new components (backend, agents, frontend updates)
 are licensed under the GNU General Public License v3.0 (GPLv3).
 See the LICENSE file for the full GPLv3 text.
 -------------------------------------------------------------------------
+
+This product includes modified source from go-gost:
+https://github.com/go-gost/gost
+https://github.com/go-gost/x
+Copyright (c) 2016 ginuerzh
+Licensed under the MIT License. See go-gost/LICENSE and go-gost/x/LICENSE.

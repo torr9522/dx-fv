@@ -6,9 +6,11 @@ commit `3549fe5ad8a6e9b863b3e4f7b9bf738facff87ee`.
 
 The root `LICENSE` applies GPLv3 to FLVX modifications and new components. The
 root `LICENSE-APACHE` and `NOTICE` preserve the original flux-panel Apache-2.0
-attribution. `vite-frontend/LICENSE` preserves the MIT notice for the frontend
-template. Go and JavaScript dependencies retain their own licenses; their exact
-versions are defined by the three `go.mod` files and `vite-frontend/pnpm-lock.yaml`.
+attribution. `go-gost/LICENSE` and `go-gost/x/LICENSE` preserve the MIT notice
+for the embedded go-gost forks. `vite-frontend/LICENSE` preserves the MIT notice
+for the frontend template. Go and JavaScript dependencies retain their own
+licenses; their exact versions are defined by the three `go.mod` files and
+`vite-frontend/pnpm-lock.yaml`.
 
 The downstream changes add BusinessLine orchestration, the Frontsea port pool,
 QIX shared-Tunnel integration, versioned BusinessLine migrations, protocol-mode
