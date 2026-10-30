@@ -25,6 +25,8 @@ and `vite-frontend/LICENSE` must remain present. See [provenance.md](provenance.
 7. [known-limitations.md](known-limitations.md): verified limits and deployment status.
 8. [release-process.md](release-process.md): repository and release gate.
 9. [handover.md](handover.md): checklist for a new maintainer or Codex session.
+10. [native-installer.md](native-installer.md): native Debian release and install layout.
+11. [commercial-license-boundary.md](commercial-license-boundary.md): unchanged upstream authorization boundary.
 
 Example files under `deploy/examples/` contain placeholders only. Never commit a
 real `.env`, database, Agent state, token, certificate, private key, packet capture,

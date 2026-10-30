@@ -56,9 +56,11 @@ required_files=(
   docs/dx/database-migrations.md docs/dx/deployment.md
   docs/dx/design-decisions.md docs/dx/known-limitations.md
   docs/dx/project-history.md docs/dx/provenance.md
-  docs/dx/release-process.md docs/dx/handover.md
+  docs/dx/release-process.md docs/dx/handover.md docs/dx/native-installer.md
+  docs/dx/commercial-license-boundary.md
   deploy/examples/panel.env.example deploy/examples/flvx-paneld.service.example
-  deploy/examples/Caddyfile.example
+  deploy/examples/Caddyfile.example deploy/installer/install-fvdx.sh
+  scripts/build-fvdx-release.sh scripts/check-fvdx-installer.sh
 )
 
 missing=()
@@ -118,6 +120,44 @@ fi
 for tool in go node pnpm gitleaks; do
   require_command "$tool" || true
 done
+
+run "FV-DX native installer static contract" scripts/check-fvdx-installer.sh
+
+commercial_files=(
+  go-backend/internal/license/keygen.go
+  go-backend/internal/http/handler/license_validation.go
+  go-backend/internal/http/handler/jobs.go
+  go-backend/internal/store/repo/config_policy.go
+  vite-frontend/src/config/site.ts
+  vite-frontend/src/pages/config.tsx
+)
+commercial_boundary_ok=true
+for path in "${commercial_files[@]}"; do
+  if [[ $(git rev-parse "$CLEAN_BASELINE_COMMIT:$path" 2>/dev/null || true) != \
+        $(git rev-parse "$REPLAYED_DX_TIP:$path" 2>/dev/null || true) ]] ||
+      [[ $(git rev-parse "$REPLAYED_DX_TIP:$path" 2>/dev/null || true) != \
+        $(git rev-parse "HEAD:$path" 2>/dev/null || true) ]] ||
+      [[ $(git rev-parse "$REPLAYED_DX_TIP:$path" 2>/dev/null || true) != \
+        $(git hash-object "$path" 2>/dev/null || true) ]]; then
+    commercial_boundary_ok=false
+  fi
+done
+if {
+    git diff --unified=0 "$CLEAN_BASELINE_COMMIT..HEAD" -- \
+      go-backend/internal/http/handler/handler.go
+    git diff --unified=0 -- go-backend/internal/http/handler/handler.go
+  } | grep -E '^[+-][^+-].*(license|activation|commercial|is_commercial|授权|激活|商业)' >/dev/null; then
+  commercial_boundary_ok=false
+fi
+if grep -E '(is_commercial|license_key|license_machine_id|KEYGEN_ACCOUNT_ID)=' \
+    deploy/installer/install-fvdx.sh >/dev/null; then
+  commercial_boundary_ok=false
+fi
+if $commercial_boundary_ok; then
+  pass "commercial-license implementation and installer boundary"
+else
+  fail "commercial-license implementation or installer boundary changed"
+fi
 
 if command -v gitleaks >/dev/null 2>&1; then
 	current_secret_report="$tmp_dir/gitleaks-current.json"
@@ -278,6 +318,17 @@ if command -v node >/dev/null 2>&1 && command -v pnpm >/dev/null 2>&1; then
     pass "frontend artifact contains index.html and hashed JavaScript"
   else
     fail "frontend artifact is incomplete"
+  fi
+
+  gate_version="gate-$(git rev-parse --short=12 HEAD)"
+  gate_output="$tmp_dir/native-release"
+  if scripts/build-fvdx-release.sh "$gate_version" "$gate_output" >/dev/null &&
+      (cd "$gate_output/$gate_version" && sha256sum --strict -c manifest.sha256 >/dev/null) &&
+      [[ -x "$gate_output/install.sh" ]] &&
+      [[ $(wc -l < "$gate_output/$gate_version/manifest.sha256") -eq 4 ]]; then
+    pass "native release artifacts and SHA256 manifest"
+  else
+    fail "native release artifacts or SHA256 manifest"
   fi
 fi
 

@@ -18,6 +18,12 @@ Use this checklist on a new server or at the start of a new maintenance session.
    directory/symlink, never by overlay copy.
 10. Record which tests were actually run and clearly separate DX evidence from
     production evidence.
+11. For a native release, read `native-installer.md`, build a versioned artifact
+    directory, verify its manifest, and test the staged `install.sh` on a fresh
+    Debian 12 AMD64 host.
+12. Recheck `commercial-license-boundary.md`; the installer must leave the
+    upstream commercial state unlicensed unless a legitimate license is
+    activated through the unchanged upstream flow.
 
 Never obtain operational secrets from old chat logs as a normal setup method.
 Provision new credentials through the system owner, keep them outside Git, and
