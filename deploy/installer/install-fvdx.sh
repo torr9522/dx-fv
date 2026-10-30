@@ -208,7 +208,7 @@ download_artifacts() {
     /^\// || /(^|\/)\.\.($|\/)/ {bad=1}
     END {exit bad ? 1 : 0}
   ' || die "Frontend 压缩包包含不安全路径。"
-  tar -tzf "$temp_dir/frontend.tar.gz" | grep -Fxq './index.html' ||
+  tar -tzf "$temp_dir/frontend.tar.gz" | awk '$0 == "./index.html" {found=1} END {exit found ? 0 : 1}' ||
     die "Frontend 压缩包缺少 index.html。"
 }
 
@@ -360,7 +360,7 @@ wait_for_backend() {
   for ((i = 1; i <= 30; i++)); do
     if curl -fsS -H 'Content-Type: application/json' \
       --data '{"name":"app_name"}' \
-      "http://127.0.0.1:$BACKEND_PORT/api/v1/public/config/get" | grep -q '"code":0'; then
+      "http://127.0.0.1:$BACKEND_PORT/api/v1/public/config/get" | grep '"code":0' >/dev/null; then
       return 0
     fi
     sleep 1
@@ -384,8 +384,8 @@ verify_https() {
   [[ $proxy_mode == caddy ]] || return 0
   local attempt
   for ((attempt = 1; attempt <= 60; attempt++)); do
-    if curl -fsS --connect-timeout 5 "https://$domain/" | grep -qi '<html'; then
-      curl -fsS --connect-timeout 5 "https://$domain/business-line" | grep -qi '<html' || return 1
+    if curl -fsS --connect-timeout 5 "https://$domain/" | grep -i '<html' >/dev/null; then
+      curl -fsS --connect-timeout 5 "https://$domain/business-line" | grep -i '<html' >/dev/null || return 1
       return 0
     fi
     sleep 2
