@@ -20,6 +20,7 @@ required_installer_patterns=(
   'FLVX_RELEASE_VERSION'
   '/dev/tty'
   'sha256sum --strict -c'
+  "length(\$1) != 64"
   'SERVER_ADDR=127.0.0.1:'
   'schema 8'
   'frontend-current.next'

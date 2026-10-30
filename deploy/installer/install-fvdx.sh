@@ -190,7 +190,7 @@ download_artifacts() {
 
   local required=(flvx-paneld-linux-amd64 flvx-init-linux-amd64 frontend.tar.gz release-metadata.json)
   local listed
-  listed=$(awk 'NF != 2 || $1 !~ /^[0-9a-f]{64}$/ || $2 !~ /^[A-Za-z0-9._-]+$/ {bad=1} {print $2} END {if (bad) exit 1}' "$manifest") ||
+  listed=$(awk 'NF != 2 || length($1) != 64 || $1 !~ /^[0-9a-f]+$/ || $2 !~ /^[A-Za-z0-9._-]+$/ {bad=1} {print $2} END {if (bad) exit 1}' "$manifest") ||
     die "SHA256 manifest 格式无效。"
   for filename in "${required[@]}"; do
     grep -Fxq "$filename" <<<"$listed" || die "manifest 缺少 $filename。"
