@@ -21,6 +21,18 @@ func TestIsAddressAlreadyInUse(t *testing.T) {
 	}
 }
 
+func TestFrontseaReservedPortsProtectsInfrastructureRange(t *testing.T) {
+	reserved := frontseaReservedPorts()
+	for port := frontseaPortStart; port <= frontseaReservedPortEnd; port++ {
+		if !reserved[port] {
+			t.Fatalf("expected port %d to be reserved", port)
+		}
+	}
+	if reserved[frontseaReservedPortEnd+1] {
+		t.Fatalf("port %d must remain available to the DX pool", frontseaReservedPortEnd+1)
+	}
+}
+
 func TestConfiguredBusinessLineResource(t *testing.T) {
 	t.Setenv(businessLineGZNodeEnv, " 12 ")
 	id, err := configuredBusinessLineResource(businessLineGZNodeEnv)

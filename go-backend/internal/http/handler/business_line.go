@@ -26,10 +26,19 @@ var (
 const (
 	frontseaPortStart           = 34700
 	frontseaPortEnd             = 34799
+	frontseaReservedPortEnd     = 34725
 	businessLineGZNodeEnv       = "FLVX_BUSINESS_LINE_GZ_NODE_ID"
 	businessLineFrontseaNodeEnv = "FLVX_BUSINESS_LINE_FRONTSEA_NODE_ID"
 	businessLineQIXTunnelEnv    = "FLVX_BUSINESS_LINE_QIX_TUNNEL_ID"
 )
+
+func frontseaReservedPorts() map[int]bool {
+	reserved := make(map[int]bool, frontseaReservedPortEnd-frontseaPortStart+1)
+	for port := frontseaPortStart; port <= frontseaReservedPortEnd; port++ {
+		reserved[port] = true
+	}
+	return reserved
+}
 
 type businessLineCreateRequest struct {
 	Name         string `json:"name"`
@@ -330,7 +339,7 @@ func (h *Handler) createFrontseaLineTx(tx *gorm.DB, req businessLineCreateReques
 	if err != nil {
 		return nil, err
 	}
-	reserved := map[int]bool{34700: true, 34701: true, 34720: true, 34721: true, 34722: true, 34723: true, 34724: true, 34725: true}
+	reserved := frontseaReservedPorts()
 	for port := range runtimeConflicts {
 		reserved[port] = true
 	}
