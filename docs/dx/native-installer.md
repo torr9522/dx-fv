@@ -16,23 +16,22 @@ the backend, database initializer, frontend archive, release metadata, and
 `manifest.sha256`. The metadata records the source commit and schema version.
 Migrations are compiled into the backend; the initializer verifies schema 8.
 
-All downloads use two settings:
+All downloads use two settings. The checked-in defaults pin this remote
+installation acceptance candidate:
 
 ```bash
-FLVX_RELEASE_BASE_URL=https://downloads.example.invalid/flvx-dx
-FLVX_RELEASE_VERSION=VERSION
+FLVX_RELEASE_BASE_URL=https://github.com/torr9522/dx-fv/releases/download
+FLVX_RELEASE_VERSION=fvdx-remote-rc1
 ```
 
-The placeholder must be replaced only after the owner and distribution channel
-are approved. A private Git repository is not an anonymous download channel;
-never put a GitHub token or PAT in the installation command.
+The version is intentionally not `latest`: future releases cannot silently
+change what this installer deploys. Never put a GitHub token or PAT in the
+installation command.
 
 ## Installation behavior
 
 ```bash
-curl -fsSL https://DOWNLOAD_HOST/install.sh | \
-  FLVX_RELEASE_BASE_URL=https://DOWNLOAD_HOST \
-  FLVX_RELEASE_VERSION=VERSION bash
+curl -fsSL https://raw.githubusercontent.com/torr9522/dx-fv/main/deploy/installer/install-fvdx.sh | bash
 ```
 
 Prompts are read from `/dev/tty`, so they work when the script is piped to Bash.
@@ -78,3 +77,5 @@ root with mode `0600`. It is operational state and must never be committed.
 
 Local staging may use HTTP only with `FLVX_ALLOW_INSECURE_DOWNLOADS=1`.
 Production release URLs must use HTTPS. Both use the same installer source.
+Environment overrides remain available for controlled staging tests, but the
+normal public command requires none.

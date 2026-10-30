@@ -14,6 +14,23 @@ QIX共享 Tunnel、版本化迁移、TCP/TCP+UDP 模式和前端缓存修复。
 开发/DX 已验证能力与尚未部署到生产的能力。不要直接使用下面的上游安装命令覆盖现有
 DX 或生产环境。
 
+## FV-DX Debian 12 原生安装
+
+当前远程安装验收版本为预发布版 `fvdx-remote-rc1`。它只支持全新的 Debian 12
+AMD64/x86_64 服务器，使用 systemd 原生运行，不需要 Docker、Go、Node.js、pnpm、
+Git 或编译器。安装器会从本仓库的固定版本 Release 下载 Backend 与 Frontend，并在
+写入系统前校验 SHA256。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/torr9522/dx-fv/main/deploy/installer/install-fvdx.sh | bash
+```
+
+交互输入从 `/dev/tty` 读取，因此管道执行仍会询问面板域名、反向代理方式和管理员凭据
+保存方式。默认推荐由 Caddy 管理 HTTPS；管理员用户名和密码均随机生成。安装器检测到
+已有数据库、服务或版本目录时会停止，不会覆盖现有安装。
+
+完整行为和目录布局见 [原生安装器说明](docs/dx/native-installer.md)。
+
 
 ## 特性
 
@@ -35,7 +52,7 @@ Go 后端和 agent 的最低编译版本为 **Go 1.26.10**；若使用 Go 1.27�
 
 这些版本包含 2026 年 10 月的运行时安全修复。已有部署还需重新构建并更新后端镜像及所有 agent 二进制，详见 [安全排查与升级说明](docs/security/2026-10-runtime-updates.md)。
 
-## 部署流程
+## 上游兼容部署流程（Docker，非 FV-DX 原生安装）
 ---
 ### Docker Compose部署
 #### 快速部署（安装最新版）

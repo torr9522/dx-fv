@@ -52,6 +52,9 @@ cat > "$release_dir/release-metadata.json" <<EOF
 {
   "product": "FV-DX",
   "artifact_version": "$version",
+  "release_tag": "$version",
+  "source_repository": "https://github.com/torr9522/dx-fv",
+  "installer_path": "deploy/installer/install-fvdx.sh",
   "build_commit": "$build_commit",
   "build_time": "$build_time",
   "platform": "linux-amd64",
@@ -67,7 +70,10 @@ EOF
     flvx-init-linux-amd64 \
     frontend.tar.gz \
     release-metadata.json > manifest.sha256
+  sha256sum --strict -c manifest.sha256
 )
+chmod 0755 "$release_dir/flvx-paneld-linux-amd64" "$release_dir/flvx-init-linux-amd64"
+chmod 0644 "$release_dir/frontend.tar.gz" "$release_dir/release-metadata.json" "$release_dir/manifest.sha256"
 install -m 0755 deploy/installer/install-fvdx.sh "$output_dir/install.sh"
 
 printf 'ARTIFACT_VERSION=%s\n' "$version"

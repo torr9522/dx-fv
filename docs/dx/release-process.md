@@ -33,8 +33,9 @@ evidence that it is a fixture or a revoked non-secret.
   upstream refs. Use a separate maintenance clone when reviewing upstream
   changes, then import reviewed patches or perform a reviewed clean rebaseline.
 - Never push the downstream branch to `Sagit-chu/flvx`.
-- Initially use a private repository. Public visibility needs a fresh license and
-  full-history secret review.
+- Public visibility requires a fresh license review, a scan of the current tree
+  and all reachable history, and removal of operational infrastructure details
+  from every reachable commit.
 
 ## Version and deployment release
 
@@ -48,3 +49,7 @@ evidence that it is a fixture or a revoked non-secret.
 7. Treat production deployment as a separate, explicitly approved change.
 
 No tag should imply production acceptance unless production was actually tested.
+
+`fvdx-remote-rc1` is a pre-release for remote installation acceptance. Its
+installer is pinned to that exact tag and must not resolve a floating `latest`
+release.

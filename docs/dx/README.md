@@ -27,6 +27,7 @@ and `vite-frontend/LICENSE` must remain present. See [provenance.md](provenance.
 9. [handover.md](handover.md): checklist for a new maintainer or Codex session.
 10. [native-installer.md](native-installer.md): native Debian release and install layout.
 11. [commercial-license-boundary.md](commercial-license-boundary.md): unchanged upstream authorization boundary.
+12. [fvdx-remote-rc1.md](fvdx-remote-rc1.md): remote installation acceptance pre-release scope.
 
 Example files under `deploy/examples/` contain placeholders only. Never commit a
 real `.env`, database, Agent state, token, certificate, private key, packet capture,

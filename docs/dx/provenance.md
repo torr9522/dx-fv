@@ -29,8 +29,13 @@ preserved:
 | `062ef0e6e200168bca2e51c30a8be43229588af9` | `3b213c2ea607f2e88ee09df92e6bb1fd15a27825` |
 | `535e129f10dbf1592ac3806fc8222c73597a0f34` | `c995aad968ef603d431fa89f433048039aaf9807` |
 | `8196178745fbfa51ad5c5efaa09577daab28a61c` | `090802359721689ac31dbe12e8220d2b88479e5e` |
-| `74b73ed104d940ae39ee35f9f660c0919d7dc31b` | `30b17e0527689b9288d89046cef71a7635049392` |
-| `2ffea41de9649d77b6a51cc228dcf6e1b08c2961` | `a985781c45bb7d600d886fd9643c994ba353fe11` |
+| `74b73ed104d940ae39ee35f9f660c0919d7dc31b` | `6c1c34f5a60eece34eb9af0927d445eda5f69609` |
+| `2ffea41de9649d77b6a51cc228dcf6e1b08c2961` | `568408e07697c264114d1801634c731c32d2b13b` |
+
+The final two publication commits have different IDs because the public-release
+copy replaced an operational environment inventory with non-routable examples
+and placeholders. The original development repository and the first 13 replayed
+commits were not rewritten.
 
 Future upstream work must be inspected in a separate maintenance clone and
 imported as reviewed patches or through a reviewed clean rebaseline. Do not

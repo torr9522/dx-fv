@@ -10,7 +10,7 @@ cd "$repo_root"
 readonly UPSTREAM_BASE_COMMIT=3549fe5ad8a6e9b863b3e4f7b9bf738facff87ee
 readonly UPSTREAM_BASE_TREE=6076e2ad5bc0ac0934d9c0a19b433661ff14db0b
 readonly CLEAN_BASELINE_COMMIT=a5240dc45bcc21a9571bbea9745b423dbc166733
-readonly REPLAYED_DX_TIP=a985781c45bb7d600d886fd9643c994ba353fe11
+readonly REPLAYED_DX_TIP=568408e07697c264114d1801634c731c32d2b13b
 readonly REPLAYED_DX_COUNT=15
 
 failures=0
@@ -58,6 +58,7 @@ required_files=(
   docs/dx/project-history.md docs/dx/provenance.md
   docs/dx/release-process.md docs/dx/handover.md docs/dx/native-installer.md
   docs/dx/commercial-license-boundary.md
+  docs/dx/fvdx-remote-rc1.md
   deploy/examples/panel.env.example deploy/examples/flvx-paneld.service.example
   deploy/examples/Caddyfile.example deploy/installer/install-fvdx.sh
   scripts/build-fvdx-release.sh scripts/check-fvdx-installer.sh

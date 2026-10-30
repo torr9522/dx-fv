@@ -18,6 +18,8 @@ fi
 required_installer_patterns=(
   'FLVX_RELEASE_BASE_URL'
   'FLVX_RELEASE_VERSION'
+  'https://github.com/torr9522/dx-fv/releases/download'
+  'fvdx-remote-rc1'
   '/dev/tty'
   'sha256sum --strict -c'
   "length(\$1) != 64"
@@ -33,6 +35,15 @@ for pattern in "${required_installer_patterns[@]}"; do
     exit 1
   }
 done
+
+[[ $(grep -Fc 'https://github.com/torr9522/dx-fv/releases/download' "$installer") -eq 1 ]] || {
+  echo "installer must define the release base URL exactly once" >&2
+  exit 1
+}
+[[ $(grep -Fc 'fvdx-remote-rc1' "$installer") -eq 1 ]] || {
+  echo "installer must define the pinned release version exactly once" >&2
+  exit 1
+}
 
 if grep -Eq 'handle [^{]+\{[^}]+\}' "$installer"; then
   echo "Caddy handle blocks must use portable multiline syntax" >&2
@@ -58,5 +69,16 @@ for artifact in flvx-paneld-linux-amd64 flvx-init-linux-amd64 frontend.tar.gz re
     exit 1
   }
 done
+
+for metadata_field in source_repository release_tag installer_path build_commit schema_version; do
+  grep -Fq "\"$metadata_field\"" "$builder" || {
+    echo "release metadata is missing: $metadata_field" >&2
+    exit 1
+  }
+done
+grep -Fq 'sha256sum --strict -c manifest.sha256' "$builder" || {
+  echo "release builder must verify its generated manifest" >&2
+  exit 1
+}
 
 echo "FV-DX installer static contract: PASS"
