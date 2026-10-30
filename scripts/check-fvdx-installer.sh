@@ -34,6 +34,11 @@ for pattern in "${required_installer_patterns[@]}"; do
   }
 done
 
+if grep -Eq 'handle [^{]+\{[^}]+\}' "$installer"; then
+  echo "Caddy handle blocks must use portable multiline syntax" >&2
+  exit 1
+fi
+
 if grep -Eiq '(^|[^[:alnum:]_])(docker|docker-compose)([^[:alnum:]_]|$)' "$installer"; then
   echo "native installer must not invoke Docker" >&2
   exit 1

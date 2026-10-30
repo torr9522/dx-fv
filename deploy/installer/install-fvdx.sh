@@ -318,8 +318,12 @@ EOF
 write_reverse_proxy_example() {
   cat > "$ETC_ROOT/reverse-proxy-example.caddy" <<EOF
 $domain {
-    handle /api/* { reverse_proxy 127.0.0.1:$BACKEND_PORT }
-    handle /system-info { reverse_proxy 127.0.0.1:$BACKEND_PORT }
+    handle /api/* {
+        reverse_proxy 127.0.0.1:$BACKEND_PORT
+    }
+    handle /system-info {
+        reverse_proxy 127.0.0.1:$BACKEND_PORT
+    }
     handle /assets/* {
         root * $OPT_ROOT/frontend-current
         header Cache-Control "public, max-age=31536000, immutable"
