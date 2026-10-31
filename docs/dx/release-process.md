@@ -50,6 +50,22 @@ evidence that it is a fixture or a revoked non-secret.
 
 No tag should imply production acceptance unless production was actually tested.
 
-`fvdx-remote-rc1` is a pre-release for remote installation acceptance. Its
-installer is pinned to that exact tag and must not resolve a floating `latest`
-release.
+`fvdx-remote-rc1` is preserved as historical remote-install acceptance evidence.
+`v1.0.0` is the frozen application baseline. The `v1.0.1` installer pins its
+asset downloads to `v1.0.1`; it must not resolve a floating `latest` release.
+
+For `v1.0.1`, reuse the verified `v1.0.0` backend, initializer, and frontend
+archives byte-for-byte. Release metadata must record the new release commit and
+the distinct application build commit. Rebuilding unchanged application code is
+not an acceptable substitute for proving binary identity.
+
+After anonymously downloading and verifying the v1.0.0 source Release directory,
+prepare the new metadata and manifest with:
+
+```bash
+scripts/package-reused-fvdx-release.sh v1.0.1 VERIFIED_V1_DIR OUTPUT_DIR V1_COMMIT
+```
+
+The script refuses a source application commit other than the frozen baseline,
+checks the source manifest, copies only the three application assets, and proves
+byte identity with `cmp`.

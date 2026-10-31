@@ -23,8 +23,8 @@ The downstream commits through the functional baseline are:
 
 The protocol implementation was validated in DX for Frontsea and QIX, including
 repeated switching and shared-Tunnel isolation. That is development evidence,
-not production acceptance. At this publication audit, production is still schema
-7 and does not have the protocol-mode backend or frontend.
+not production acceptance. The repository contains no evidence establishing
+which FV-DX schema or version, if any, is deployed in production.
 
 Do not squash or rewrite these commits during routine maintenance. If a secret
 scan requires history remediation, stop and agree on a dedicated migration plan,

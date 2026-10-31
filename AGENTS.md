@@ -1,75 +1,157 @@
-# AGENTS
+# FV-DX repository instructions
 
-FLVX — traffic forwarding panel: Go admin API + Vite/React UI + Go agent.
+FV-DX is a downstream FLVX traffic-forwarding panel: a Go control plane, a
+React/Vite operator UI, and a Go forwarding Agent. The frozen stable baseline is
+`v1.0.0` at commit `f25dcb4576eea367afb0274f4b21b6c02c735984`.
+This branch develops `v1.0.1` as a maintenance, documentation, handoff, and
+installer release. Schema 8 is the current application schema.
 
-## Structure
+## Read before changing anything
 
-| Dir | Role | Entry |
-|-----|------|-------|
-| `go-backend/` | Admin API (GORM + SQLite/PG, net/http) | `cmd/paneld/main.go` |
-| `go-gost/` | Forwarding agent (forked GOST) | `main.go` |
-| `go-gost/x/` | Protocol handlers/dialers/listeners (own module) | — |
-| `vite-frontend/` | React dashboard (shadcn bridge + Tailwind v4) | `src/App.tsx` |
+1. `docs/PROJECT_STATUS.md`
+2. `docs/dx/README.md` and `docs/dx/architecture.md`
+3. `docs/dx/design-decisions.md` and `docs/dx/known-limitations.md`
+4. The relevant file under `docs/development-log/`
+5. The relevant project Skill under `.agents/skills/`
+6. The nearest nested `AGENTS.md` for the directory being edited
 
-`go-gost/go.mod` uses `replace github.com/go-gost/x => ./x`.
+Use `docs/architecture/` for diagrams, `docs/decisions/` for durable decisions,
+and `docs/verification/` for acceptance evidence. Evidence labels are defined
+in `docs/development-log/README.md`.
 
-## Commands
+## Architecture
+
+| Path | Responsibility | Entry point |
+| --- | --- | --- |
+| `go-backend/` | Panel API, storage, and orchestration | `cmd/paneld/main.go` |
+| `vite-frontend/` | React/Vite operator UI | `src/main.tsx` |
+| `go-gost/` | FLVX forwarding Agent | `main.go` |
+| `go-gost/x/` | Local go-gost/x runtime fork | Go module |
+| `deploy/installer/` | Native Debian installer | `install-fvdx.sh` |
+
+BusinessLine is the user-facing aggregate. It maps to Forward, ForwardPort,
+Tunnel, and ChainTunnel runtime records. Frontsea Direct owns two hop-local
+Forward paths and automatically allocates an IX port. QIX lines share an
+existing Tunnel that no individual BusinessLine owns. Protocol switching adds
+or removes only the UDP service and must preserve the TCP service identity.
+
+## Project Skills
+
+Repository Skills are automatically discovered from `.agents/skills/`. Use
+`/skills` to inspect them or invoke one explicitly as `$skill-name`.
+
+- `flvx-project-onboarding`: cold start and task routing
+- `flvx-architecture`: component and resource ownership
+- `business-line-development`: aggregate creation/deletion and API work
+- `frontsea-direct`: two-hop allocation, conflicts, and rollback
+- `qix-shared-tunnel`: shared-Tunnel lifecycle and isolation
+- `protocol-switching`: TCP-only/TCP+UDP transitions
+- `database-migrations`: schema and backup/restore discipline
+- `agent-lifecycle`: registration, commands, recovery, and online status
+- `frontend-ui`: routes, grouping, cache cleanup, and atomic publishing
+- `native-installer`: public curl installer and native deployment
+- `testing-debugging`: unit, integration, data-plane, and stability checks
+- `release-management`: versions, immutable assets, tags, and release gates
+- `commercial-license-boundary`: protected authorization behavior
+- `security-and-secrets`: public-repository and credential safety
+- `flvx-api`: read-only-first API investigation and authenticated operations
+
+Each Skill records its source and license in `.agents/skills/README.md`.
+
+## Build and test
+
+Required versions are recorded in module files and `docs/dx/development.md`.
+The development host may define a stale global `GOROOT`; unset it before using
+the pinned Go binary. Start with:
 
 ```bash
-# Backend
-(cd go-backend && go run ./cmd/paneld)        # SERVER_ADDR defaults to :6365
-(cd go-backend && make build)
-(cd go-backend && go test ./...)
-
-# Frontend
-(cd vite-frontend && pnpm install)
-(cd vite-frontend && pnpm run dev)             # host 0.0.0.0:3000
-(cd vite-frontend && pnpm run build)           # tsc && vite build
-(cd vite-frontend && pnpm run lint)            # eslint --fix (no typecheck command)
-
-# Agent
-(cd go-gost && go run .)
+bash scripts/bootstrap-dev.sh --check
+unset GOROOT
+(cd go-backend && TZ=UTC go test ./...)
+(cd go-backend && go build ./cmd/paneld)
+(cd go-gost/x && go test ./...)
+(cd go-gost && go test ./...)
+(cd vite-frontend && pnpm install --frozen-lockfile)
+(cd vite-frontend && pnpm exec eslint .)
+(cd vite-frontend && pnpm run build)
+bash scripts/check-fvdx-installer.sh
+bash scripts/check-project-handoff.sh
 ```
 
-## Conventions
+`vite-frontend` has no unit-test runner. A lint/build PASS is not browser or
+data-plane acceptance. The optional PostgreSQL contract suite must use a
+disposable database, never DX or production.
 
-- **Auth**: raw JWT in `Authorization` header — **no `Bearer` prefix** (both frontend and backend).
-- **API envelope**: all responses `{code, msg, data, ts}` (code 0 = success).
-- **Frontend UI**: import from `src/shadcn-bridge/heroui/*`, never `@heroui/*` or `@nextui-org/*`.
-- **Tailwind theme**: `globals.css` must import `tailwind-theme.pcss` or semantic classes break.
-- **Backend DB**: handlers use Repository methods, never `repo.DB()` directly.
-- **GORM models**: always define `TableName()` (GORM pluralizes by default).
-- **GORM tags**: no `type:jsonb` or `type:serial` (SQLite incompatible).
-- **Go versions**: all three modules require Go 1.26.10 or newer (CVE-2026-111943); CI reads the module's `go.mod`. Do not use Go 1.27.0–1.27.2, which also lack this fix.
-- **Node.js versions**: `.node-version` pins 22.23.4 for CI; local builds also support patched 24.22.1+ and 26.12.1+ (CVE-2026-111497).
+## Database rules
 
-## Anti-patterns
+- `schema_version` is authoritative; current version is 8.
+- BusinessLine schema belongs to explicit migrations 0007 and 0008.
+- Never add BusinessLine to broad startup AutoMigrate.
+- Add a numbered, transactional migration for any schema change. Update the
+  version in the same transaction and test upgrade, repeated startup, failure
+  rollback, and representative data preservation.
+- There is no down-migration. Application rollback requires a validated matching
+  database backup.
+- Never edit a live SQLite database directly to implement a feature.
 
-- Don't edit `install.sh` or `panel_install.sh` locally (CI overwrites on release).
-- Don't edit `go-gost/x/internal/util/grpc/proto/*.pb.go` (generated).
-- Don't add frontend tests (no Vitest/Jest configured).
-- Don't reintroduce `@heroui/*` or `@nextui-org/*` packages.
+## Release rules
 
-## Testing
+- `v1.0.0` and `fvdx-remote-rc1` are immutable history. Never move tags,
+  replace assets, edit notes, or bypass their protection.
+- Do not rewrite the clean publication history or re-import unaudited upstream
+  history. Research upstream in a separate clone and import reviewed patches or
+  use a reviewed clean rebaseline.
+- `v1.0.1` may reuse the verified v1.0.0 application binaries only when byte
+  identity is proven. Metadata must distinguish the release commit from
+  application build commit `f25dcb4576eea367afb0274f4b21b6c02c735984`.
+- Run `scripts/check-release-readiness.sh` and every gate in the release Skill.
+  Do not weaken assertions, skip failures, force-push, or use floating `latest`
+  as an installer asset source.
 
-- Backend: `(cd go-backend && go test ./...)` — includes contract tests in `tests/contract/`.
-- Frontend: no test infrastructure.
-- CI runs one PostgreSQL contract test: env var `FLVX_POSTGRES_TEST_DSN`.
+## Security and commercial boundaries
 
-## DX downstream handover
+Never commit credentials, tokens, databases, Agent state, `device.id`, private
+keys, SSH configuration, real infrastructure inventory, packet captures, raw
+Codex sessions, or production logs. Do not persist panel passwords in the
+repository or recommend reusable plaintext credential files. Redact examples
+and scan the current tree plus all reachable history.
 
-- Read `docs/dx/README.md` before changing BusinessLine orchestration or deployment.
-- Treat production and DX resources as separate environments. Never copy node, tunnel,
-  database, or credential values between them.
-- `BusinessLine` schema changes are versioned in `migrateSchema`; do not add that model
-  to the generic startup AutoMigrate list.
-- Frontend releases use a versioned directory plus an atomic `frontend-current`
-  symlink. Do not deploy by overlay-copying files into the active directory.
-- The downstream frontend intentionally does not register the upstream PWA or perform
-  automatic upstream update checks.
+Do not modify or bypass commercial authorization, license-server access,
+machine binding, expiry checks, or paid feature policy. Protected paths include:
 
-## Build quirks
+- `go-backend/internal/license/keygen.go`
+- `go-backend/internal/http/handler/license_validation.go`
+- `go-backend/internal/http/handler/jobs.go`
+- `go-backend/internal/store/repo/config_policy.go`
+- licensed frontend settings
 
-- `vite-frontend` uses `rolldown-vite` (Rust bundler), not standard Vite.
-- `vite.config.ts`: `minify: false`, `treeshake: false` (debugging mode).
-- CI builds `go-gost` with `CGO_ENABLED=0` then compresses with UPX `--best --lzma`.
+The authorization service remains `https://api.keygen.sh/v1`. Installation and
+DX testing must not change commercial state or fabricate a license response.
+
+## Environment safety
+
+Production is outside normal development scope. Do not connect to, deploy,
+restart, migrate, or edit production without an explicit task naming the exact
+resource and operation. Keep DX Agent identities, node IDs, tunnels, databases,
+and acceptance evidence separate from production. A DX PASS is not production
+acceptance.
+
+External UDP loss is not automatically an FV defect. Compare a same-time direct
+baseline and record unresolved attribution as `UNKNOWN` or `KNOWN LIMITATION`.
+The accepted Shadowsocks evidence includes intermittent FV UDP loss and does not
+prove zero-loss operation.
+
+## Starting a feature
+
+1. Establish status and evidence; do not rely on chat history.
+2. Research the existing path and a mature upstream implementation before
+   designing a replacement.
+3. Identify ownership, persistence, runtime, rollback, and security boundaries.
+4. Preserve stable identities and the existing architecture unless evidence
+   requires a change.
+5. Add focused tests before or with the implementation.
+6. Update decisions, development history, verification, and relevant Skills.
+7. Run proportional gates; never make a test pass by lowering assertions.
+
+Nested `AGENTS.md` files add directory-specific rules and take precedence within
+their scope.

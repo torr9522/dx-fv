@@ -4,25 +4,24 @@
 
 ## DX 二开维护分支
 
-本仓库的 `dx-fv-dev` 分支是在 FLVX `3.0.1-rc6`（上游提交
+本仓库是在 FLVX `3.0.1-rc6`（上游提交
 `3549fe5ad8a6e9b863b3e4f7b9bf738facff87ee`）基础上的下游二开。上游项目、版权和
 许可证归属没有改变；二开功能基线为
 `8196178745fbfa51ad5c5efaa09577daab28a61c`，包含 BusinessLine、前海IX自动端口、
 QIX共享 Tunnel、版本化迁移、TCP/TCP+UDP 模式和前端缓存修复。
 
-维护、构建和部署该分支前，请先阅读 [DX 维护索引](docs/dx/README.md)。其中明确区分
+维护、构建和部署前，请先阅读 [DX 维护索引](docs/dx/README.md)。其中明确区分
 开发/DX 已验证能力与尚未部署到生产的能力。不要直接使用下面的上游安装命令覆盖现有
 DX 或生产环境。
 
 ## FV-DX Debian 12 原生安装
 
-当前远程安装验收版本为预发布版 `fvdx-remote-rc1`。它只支持全新的 Debian 12
-AMD64/x86_64 服务器，使用 systemd 原生运行，不需要 Docker、Go、Node.js、pnpm、
-Git 或编译器。安装器会从本仓库的固定版本 Release 下载 Backend 与 Frontend，并在
-写入系统前校验 SHA256。
+当前稳定版为 `v1.0.1`。它支持全新的 Debian 12 AMD64/x86_64 服务器，使用 systemd
+原生运行，不需要 Docker、Go、Node.js、pnpm、Git、编译器或 Codex。安装器会从本
+仓库的固定版本 Release 下载 Backend 与 Frontend，并在写入系统前校验 SHA256。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/torr9522/dx-fv/main/deploy/installer/install-fvdx.sh | bash
+curl -fsSL https://raw.githubusercontent.com/torr9522/dx-fv/v1.0.1/deploy/installer/install-fvdx.sh | bash
 ```
 
 交互输入从 `/dev/tty` 读取，因此管道执行仍会询问面板域名、反向代理方式和管理员凭据
@@ -30,6 +29,22 @@ curl -fsSL https://raw.githubusercontent.com/torr9522/dx-fv/main/deploy/installe
 已有数据库、服务或版本目录时会停止，不会覆盖现有安装。
 
 完整行为和目录布局见 [原生安装器说明](docs/dx/native-installer.md)。
+
+## 开发者接手
+
+开发流程与面板安装相互独立。不要在生产面板服务器上安装开发工具或项目 Skills。
+
+```bash
+git clone https://github.com/torr9522/dx-fv.git
+cd dx-fv
+bash scripts/bootstrap-dev.sh --check
+# 确认计划后，需要时再执行：
+bash scripts/bootstrap-dev.sh --install
+```
+
+从仓库根目录启动 Codex。Codex 会读取 `AGENTS.md`，并从 `.agents/skills/` 自动发现
+项目 Skills。接手顺序和开发门禁见 [AGENTS.md](AGENTS.md) 与
+[项目状态](docs/PROJECT_STATUS.md)。`main` 上的安装器仅供开发验证，不是稳定部署入口。
 
 
 ## 特性

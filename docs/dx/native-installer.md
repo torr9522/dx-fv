@@ -13,15 +13,17 @@ scripts/build-fvdx-release.sh VERSION OUTPUT_DIRECTORY
 
 The command creates `OUTPUT_DIRECTORY/install.sh` and a version directory with
 the backend, database initializer, frontend archive, release metadata, and
-`manifest.sha256`. The metadata records the source commit and schema version.
+`manifest.sha256`. The metadata records the release commit, application build
+commit, asset hashes, and schema version. For a normal build both commits are
+equal; a maintenance release that reuses verified application assets records
+them separately.
 Migrations are compiled into the backend; the initializer verifies schema 8.
 
-All downloads use two settings. The checked-in defaults pin this remote
-installation acceptance candidate:
+All downloads use two settings. The checked-in defaults pin the stable release:
 
 ```bash
 FLVX_RELEASE_BASE_URL=https://github.com/torr9522/dx-fv/releases/download
-FLVX_RELEASE_VERSION=fvdx-remote-rc1
+FLVX_RELEASE_VERSION=v1.0.1
 ```
 
 The version is intentionally not `latest`: future releases cannot silently
@@ -31,7 +33,7 @@ installation command.
 ## Installation behavior
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/torr9522/dx-fv/main/deploy/installer/install-fvdx.sh | bash
+curl -fsSL https://raw.githubusercontent.com/torr9522/dx-fv/v1.0.1/deploy/installer/install-fvdx.sh | bash
 ```
 
 Prompts are read from `/dev/tty`, so they work when the script is piped to Bash.
@@ -79,3 +81,7 @@ Local staging may use HTTP only with `FLVX_ALLOW_INSECURE_DOWNLOADS=1`.
 Production release URLs must use HTTPS. Both use the same installer source.
 Environment overrides remain available for controlled staging tests, but the
 normal public command requires none.
+
+The `main` raw URL is a development entry point only. Stable documentation must
+use the fixed `v1.0.1` raw URL so installer source and Release assets cannot
+silently drift independently.

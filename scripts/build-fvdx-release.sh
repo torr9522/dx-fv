@@ -48,18 +48,30 @@ build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   tar -czf "$release_dir/frontend.tar.gz" -C dist .
 )
 
+backend_sha256=$(sha256sum "$release_dir/flvx-paneld-linux-amd64" | awk '{print $1}')
+init_sha256=$(sha256sum "$release_dir/flvx-init-linux-amd64" | awk '{print $1}')
+frontend_sha256=$(sha256sum "$release_dir/frontend.tar.gz" | awk '{print $1}')
+
 cat > "$release_dir/release-metadata.json" <<EOF
 {
   "product": "FV-DX",
   "artifact_version": "$version",
+  "release_version": "$version",
   "release_tag": "$version",
   "source_repository": "https://github.com/torr9522/dx-fv",
   "installer_path": "deploy/installer/install-fvdx.sh",
+  "release_commit": "$build_commit",
+  "application_build_commit": "$build_commit",
   "build_commit": "$build_commit",
   "build_time": "$build_time",
   "platform": "linux-amd64",
   "schema_version": 8,
-  "migrations": "embedded-in-backend"
+  "migrations": "embedded-in-backend",
+  "asset_sha256": {
+    "flvx-paneld-linux-amd64": "$backend_sha256",
+    "flvx-init-linux-amd64": "$init_sha256",
+    "frontend.tar.gz": "$frontend_sha256"
+  }
 }
 EOF
 

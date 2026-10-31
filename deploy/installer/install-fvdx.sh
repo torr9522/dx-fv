@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 readonly FLVX_RELEASE_BASE_URL="${FLVX_RELEASE_BASE_URL:-https://github.com/torr9522/dx-fv/releases/download}"
-readonly FLVX_RELEASE_VERSION="${FLVX_RELEASE_VERSION:-fvdx-remote-rc1}"
+readonly FLVX_RELEASE_VERSION="${FLVX_RELEASE_VERSION:-v1.0.1}"
 readonly FLVX_ALLOW_INSECURE_DOWNLOADS="${FLVX_ALLOW_INSECURE_DOWNLOADS:-0}"
 readonly FLVX_INSTALL_PREFIX="${FLVX_INSTALL_PREFIX:-}"
 readonly BACKEND_PORT="${FLVX_BACKEND_PORT:-6365}"

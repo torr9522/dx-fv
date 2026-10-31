@@ -18,5 +18,8 @@
 - The repository still contains upstream release/install machinery. DX production
   does not automatically follow upstream releases; release commands must target
   the downstream repository only after an approved publication process.
-- Protocol switching is verified in DX but, at the publication audit boundary,
-  is not deployed or accepted in production.
+- Protocol switching is verified in DX. The repository does not establish a
+  production FV-DX version, so no production acceptance is claimed.
+- Real Shadowsocks UDP crossed FV in the recorded acceptance run but received
+  70/80 packets (12.5% loss). Attribution between the FV path and public
+  underlay remains unknown; zero-loss UDP is not claimed.

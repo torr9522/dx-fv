@@ -10,13 +10,15 @@
 On the existing DX host, pinned tools are installed under `/opt/toolchains/`.
 On a new host, install equivalent versions through the normal trusted package or
 toolchain channels; do not copy toolchain directories from production.
+If the shell exports `GOROOT` for another Go release, unset it before running the
+pinned Go binary; otherwise the compiler can load a mismatched standard library.
 
 ## Clone and dependency setup
 
 ```bash
-git clone <private-remote-url> flvx
-cd flvx
-git switch dx-fv-dev
+git clone https://github.com/torr9522/dx-fv.git
+cd dx-fv
+bash scripts/bootstrap-dev.sh --check
 
 cd vite-frontend
 corepack enable
@@ -27,6 +29,10 @@ pnpm install --frozen-lockfile
 Go modules are downloaded by the standard Go commands. There are three modules:
 `go-backend`, `go-gost`, and `go-gost/x`. `go-gost/go.mod` replaces
 `github.com/go-gost/x` with the local `./x` module.
+
+Project Codex Skills are repository-owned under `.agents/skills/`; do not copy
+them to a production panel host. A new Codex session started from the repository
+root reads `AGENTS.md` and discovers those Skills automatically.
 
 ## Build
 
