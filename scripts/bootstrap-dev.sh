@@ -100,6 +100,7 @@ check_packages() {
 git git
 curl curl
 tar tar
+xz xz-utils
 sha256sum coreutils
 gcc build-essential
 make build-essential
@@ -175,7 +176,7 @@ download_single_hash() {
 install_toolchains() {
   local tmp go_archive node_archive gl_archive node_dir
   tmp=$(mktemp -d /tmp/fvdx-bootstrap.XXXXXX)
-  trap 'find "$tmp" -depth -delete 2>/dev/null || true' RETURN
+  trap "find '$tmp' -depth -delete 2>/dev/null || true" EXIT
   install -d -m 0755 "$TOOLCHAIN_ROOT"
 
   if ! find_go >/dev/null; then
@@ -238,14 +239,13 @@ printf 'Proceed with this development-machine installation? [y/N] ' >/dev/tty
 read -r answer </dev/tty
 [[ $answer == y || $answer == Y ]] || { echo "Installation cancelled."; exit 0; }
 
-if ((${#missing_packages[@]} > 0)); then
-  if [[ $EUID -eq 0 ]]; then sudo_cmd=(); else sudo_cmd=(sudo); fi
-  "${sudo_cmd[@]}" apt-get update
-  "${sudo_cmd[@]}" apt-get install -y --no-install-recommends "${missing_packages[@]}"
-fi
 if [[ $EUID -ne 0 ]]; then
-  echo "FAIL: pinned toolchains under $TOOLCHAIN_ROOT require root; rerun with sudo" >&2
+  echo "FAIL: --install modifies apt and $TOOLCHAIN_ROOT; rerun the same command with sudo" >&2
   exit 1
+fi
+if ((${#missing_packages[@]} > 0)); then
+  apt-get update
+  apt-get install -y --no-install-recommends "${missing_packages[@]}"
 fi
 install_toolchains
 run_check
