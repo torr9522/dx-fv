@@ -21,6 +21,14 @@ cd "$repo_root"
 
 failures=0
 missing_packages=()
+bootstrap_temp_dir=""
+
+cleanup() {
+  if [[ -n $bootstrap_temp_dir && -d $bootstrap_temp_dir ]]; then
+    find "$bootstrap_temp_dir" -depth -delete 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
 
 pass() { printf 'PASS  %s\n' "$*"; }
 warn() { printf 'WARN  %s\n' "$*"; }
@@ -175,8 +183,8 @@ download_single_hash() {
 
 install_toolchains() {
   local tmp go_archive node_archive gl_archive node_dir
-  tmp=$(mktemp -d /tmp/fvdx-bootstrap.XXXXXX)
-  trap "find '$tmp' -depth -delete 2>/dev/null || true" EXIT
+  bootstrap_temp_dir=$(mktemp -d /tmp/fvdx-bootstrap.XXXXXX)
+  tmp=$bootstrap_temp_dir
   install -d -m 0755 "$TOOLCHAIN_ROOT"
 
   if ! find_go >/dev/null; then
